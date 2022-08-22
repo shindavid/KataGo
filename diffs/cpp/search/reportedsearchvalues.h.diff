@@ -1,0 +1,15 @@
+--- cpp/search/reportedsearchvalues.h [lightvector:master]+++ cpp/search/reportedsearchvalues.h [hzyhhzy:Reversi2022]@@ -9,8 +9,6 @@   double winValue;
+   double lossValue;
+   double noResultValue;
+-  double staticScoreValue;
+-  double dynamicScoreValue;
+   double expectedScore;
+   double expectedScoreStdev;
+   double lead;
+@@ -21,7 +19,6 @@ 
+   ReportedSearchValues();
+   ReportedSearchValues(
+-    const Search& search,
+     double winLossValueAvg,
+     double noResultValueAvg,
+     double scoreMeanAvg,

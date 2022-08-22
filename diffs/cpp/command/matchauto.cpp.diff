@@ -1,0 +1,63 @@
+--- cpp/command/matchauto.cpp [lightvector:master]+++ cpp/command/matchauto.cpp [hzyhhzy:Reversi2022]@@ -268,11 +268,11 @@ 
+       namespace gfs = ghc::filesystem;
+ 
+-      for(gfs::directory_iterator iter(gfs::u8path(resultsDir)); iter != gfs::directory_iterator(); ++iter) {
++      for(gfs::directory_iterator iter(resultsDir); iter != gfs::directory_iterator(); ++iter) {
+         gfs::path dirPath = iter->path();
+         if(gfs::is_directory(dirPath))
+           continue;
+-        string file = dirPath.u8string();
++        string file = dirPath.string();
+         if(Global::isSuffix(file,".results.csv")) {
+           vector<string> lines = FileUtils::readFileLines(file,'\n');
+           for(int i = 0; i<lines.size(); i++) {
+@@ -413,7 +413,7 @@ 
+ int MainCmds::matchauto(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
++   
+   Rand seedRand;
+ 
+   ConfigParser cfg;
+@@ -447,8 +447,10 @@     return 1;
+   }
+ 
+-  Logger logger(&cfg);
++  Logger logger;
+   logger.addFile(logFile);
++  bool logToStdout = cfg.getBool("logToStdout");
++  logger.setLogToStdout(logToStdout);
+ 
+   logger.write("Auto Match Engine starting...");
+   logger.write(string("Git revision: ") + Version::getGitRevision());
+@@ -516,7 +518,7 @@   //Done loading!
+   //------------------------------------------------------------------------------------
+   logger.write("Loaded all config stuff, starting matches");
+-  if(!logger.isLoggingToStdout())
++  if(!logToStdout)
+     cout << "Loaded all config stuff, starting matches" << endl;
+ 
+   if(sgfOutputDir != string())
+@@ -545,7 +547,6 @@     auto shouldStopFunc = []() {
+       return shouldStop.load();
+     };
+-    WaitableFlag* shouldPause = nullptr;
+ 
+     Rand thisLoopSeedRand;
+     while(true) {
+@@ -561,7 +562,7 @@         string seed = gameSeedBase + ":" + Global::uint64ToHexString(thisLoopSeedRand.nextUInt64());
+         gameData = gameRunner->runGame(
+           seed, botSpecB, botSpecW, NULL, NULL, logger,
+-          shouldStopFunc, shouldPause, nullptr, nullptr, nullptr
++          shouldStopFunc, nullptr, nullptr, nullptr
+         );
+       }
+ 
+@@ -616,7 +617,7 @@   delete manager;
+ 
+   NeuralNet::globalCleanup();
+-  ScoreValue::freeTables();
++   
+ 
+   if(sigReceived.load())
+     logger.write("Exited cleanly after signal");

@@ -1,0 +1,17 @@
+--- cpp/search/reportedsearchvalues.cpp [lightvector:master]+++ cpp/search/reportedsearchvalues.cpp [hzyhhzy:Reversi2022]@@ -8,7 +8,6 @@ ReportedSearchValues::~ReportedSearchValues()
+ {}
+ ReportedSearchValues::ReportedSearchValues(
+-  const Search& search,
+   double winLossValueAvg,
+   double noResultValueAvg,
+   double scoreMeanAvg,
+@@ -22,9 +21,7 @@   noResultValue = noResultValueAvg;
+   double scoreMean = scoreMeanAvg;
+   double scoreMeanSq = scoreMeanSqAvg;
+-  double scoreStdev = ScoreValue::getScoreStdev(scoreMean,scoreMeanSq);
+-  staticScoreValue = ScoreValue::expectedWhiteScoreValue(scoreMean,scoreStdev,0.0,2.0,search.rootBoard);
+-  dynamicScoreValue = ScoreValue::expectedWhiteScoreValue(scoreMean,scoreStdev,search.recentScoreCenter,search.searchParams.dynamicScoreCenterScale,search.rootBoard);
++  double scoreStdev = ScoreValue::getScoreStdev(scoreMean,scoreMeanSq);// ScoreValue::expectedWhiteScoreValue(scoreMean, scoreStdev, search.recentScoreCenter, search.searchParams.dynamicScoreCenterScale, search.rootBoard);
+   expectedScore = scoreMean;
+   expectedScoreStdev = scoreStdev;
+   lead = leadAvg;

@@ -1,0 +1,131 @@
+--- cpp/command/benchmark.cpp [lightvector:master]+++ cpp/command/benchmark.cpp [hzyhhzy:Reversi2022]@@ -2,12 +2,13 @@ #include "../core/config_parser.h"
+ #include "../core/fileutils.h"
+ #include "../core/timer.h"
++#include "../core/test.h"
++#include "../tests/tests.h"
+ #include "../dataio/sgf.h"
+ #include "../search/asyncbot.h"
+ #include "../program/setup.h"
+ #include "../program/playutils.h"
+ #include "../program/gtpconfig.h"
+-#include "../tests/tests.h"
+ #include "../command/commandline.h"
+ #include "../main.h"
+ 
+@@ -15,6 +16,9 @@ #include <map>
+ #include <sstream>
+ #include <fstream>
++
++#include <ghc/filesystem.hpp>
++namespace gfs = ghc::filesystem;
+ 
+ using namespace std;
+ 
+@@ -51,7 +55,7 @@ 
+ int MainCmds::benchmark(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
++   
+ 
+   ConfigParser cfg;
+   string modelFile;
+@@ -150,8 +154,8 @@     return 1;
+   }
+ 
+-  const bool logToStdoutDefault = true;
+-  Logger logger(&cfg, logToStdoutDefault);
++  Logger logger;
++  logger.setLogToStdout(true);
+   logger.write("Loading model and initializing benchmark...");
+ 
+   CompactSgf* sgf;
+@@ -174,8 +178,6 @@   params.maxVisits = maxVisits;
+   params.maxPlayouts = maxVisits;
+   params.maxTime = 1e20;
+-  params.searchFactorAfterOnePass = 1.0;
+-  params.searchFactorAfterTwoPass = 1.0;
+ 
+   Setup::initializeSession(cfg);
+ 
+@@ -263,7 +265,7 @@   delete nnEval;
+   NeuralNet::globalCleanup();
+   delete sgf;
+-  ScoreValue::freeTables();
++   
+ 
+   return 0;
+ }
+@@ -271,7 +273,7 @@ static void warmStartNNEval(const CompactSgf* sgf, Logger& logger, const SearchParams& params, NNEvaluator* nnEval, Rand& seedRand) {
+   Board board(sgf->xSize,sgf->ySize);
+   Player nextPla = P_BLACK;
+-  BoardHistory hist(board,nextPla,Rules(),0);
++  BoardHistory hist(board,nextPla,Rules());
+   SearchParams thisParams = params;
+   thisParams.numThreads = 1;
+   thisParams.maxVisits = 5;
+@@ -324,15 +326,13 @@ #ifdef USE_EIGEN_BACKEND
+   //Eigen is a little interesting in that by default, it sets numNNServerThreadsPerModel based on numSearchThreads
+   //So, reset the number of threads in the nnEval each time we change the search numthreads
+-  //Also, disable the logger to suppress the kill and respawn messages.
+-  logger.setDisabled(true);
++  logger.setLogToStdout(false);
+   nnEval->killServerThreads();
+   nnEval->setNumThreads(vector<int>(numThreads,-1));
+   nnEval->spawnServerThreads();
+   //Also since we killed and respawned all the threads, re-warm them
+   Rand seedRand;
+   warmStartNNEval(sgf,logger,params,nnEval,seedRand);
+-  logger.setDisabled(false);
+ #else
+   (void)nnEval;
+   (void)logger;
+@@ -511,7 +511,7 @@ 
+ int MainCmds::genconfig(const vector<string>& args, const string& firstCommand) {
+   Board::initHash();
+-  ScoreValue::initTables();
++   
+ 
+   string outputFile;
+   string modelFile;
+@@ -568,7 +568,7 @@       throw StringError("Please answer y or n");
+   };
+ 
+-  if(FileUtils::exists(outputFile)) {
++  if(gfs::exists(gfs::path(outputFile))) {
+     bool b = false;
+     promptAndParseInput("File " + outputFile + " already exists, okay to overwrite it with an entirely new config (y/n)?\n", [&](const string& line) { parseYN(line,b); });
+     if(!b) {
+@@ -780,7 +780,7 @@   cout << "PERFORMANCE TUNING" << endl;
+ 
+   bool skipThreadTuning = false;
+-  if(FileUtils::exists(outputFile)) {
++  if(gfs::exists(gfs::path(outputFile))) {
+     int oldConfigNumSearchThreads = -1;
+     try {
+       ConfigParser oldCfg(outputFile);
+@@ -854,16 +854,14 @@     istringstream inConfig(configFileContents);
+     ConfigParser cfg(inConfig);
+ 
+-    const bool logToStdOut = true;
+-    Logger logger(&cfg, logToStdOut);
++    Logger logger;
++    logger.setLogToStdout(true);
+     logger.write("Loading model and initializing benchmark...");
+ 
+     SearchParams params = Setup::loadSingleParams(cfg,Setup::SETUP_FOR_BENCHMARK);
+     params.maxVisits = defaultMaxVisits;
+     params.maxPlayouts = defaultMaxVisits;
+     params.maxTime = 1e20;
+-    params.searchFactorAfterOnePass = 1.0;
+-    params.searchFactorAfterTwoPass = 1.0;
+ 
+     Setup::initializeSession(cfg);
+ 
+@@ -948,7 +946,7 @@ 
+   NeuralNet::globalCleanup();
+   delete sgf;
+-  ScoreValue::freeTables();
++   
+ 
+   return 0;
+ }

@@ -1,0 +1,38 @@
+--- cpp/search/searchparams.h [lightvector:master]+++ cpp/search/searchparams.h [hzyhhzy:Reversi2022]@@ -75,17 +75,11 @@   bool useNonBuggyLcb; //LCB was very minorly buggy as of pre-v1.8. Set to true to fix.
+ 
+   //Mild behavior hackery
+-  double rootEndingBonusPoints; //Extra bonus (or penalty) to encourage good passing behavior at the end of the game.
+-  bool rootPruneUselessMoves; //Prune moves that are entirely useless moves that prolong the game.
+-  bool conservativePass; //Never assume one's own pass will end the game.
+-  bool fillDameBeforePass; //When territory scoring, heuristically discourage passing before filling the dame.
+-  Player avoidMYTDaggerHackPla; //Hacky hack to avoid a particular pattern that gives some KG nets some trouble. Should become unnecessary in the future.
+   double wideRootNoise; //Explore at the root more widely
+ 
+   double playoutDoublingAdvantage; //Play as if we have this many doublings of playouts vs the opponent
+   Player playoutDoublingAdvantagePla; //Negate playoutDoublingAdvantage when making a move for the opponent of this player. If empty, opponent of the root player.
+ 
+-  double avoidRepeatedPatternUtility; //Have the root player avoid repeating similar shapes, penalizing this much utility per instance.
+ 
+   float nnPolicyTemperature; //Scale neural net policy probabilities by this temperature, applies everywhere in the tree
+   bool antiMirror; //Enable anti-mirroring logic
+@@ -113,9 +107,6 @@   //Amount of time to reserve for lag when using a time control
+   double lagBuffer;
+ 
+-  //Human-friendliness
+-  double searchFactorAfterOnePass; //Multiply playouts and visits and time by this much after a pass by the opponent
+-  double searchFactorAfterTwoPass; //Multiply playouts and visits and time by this after two passes by the opponent
+ 
+   //Time control
+   double treeReuseCarryOverTimeFactor; //Assume we gain this much "time" on the next move purely from % tree preserved * time spend on that tree.
+@@ -133,12 +124,8 @@   SearchParams();
+   ~SearchParams();
+ 
+-  void printParams(std::ostream& out);
+-
+   //Params to use for testing, with some more recent values representative of more real use (as of Jan 2019)
+   static SearchParams forTestsV1();
+-  //Params to use for testing, with some more recent values representative of more real use (as of Mar 2022)
+-  static SearchParams forTestsV2();
+ 
+   static void failIfParamsDifferOnUnchangeableParameter(const SearchParams& initial, const SearchParams& dynamic);
+ };

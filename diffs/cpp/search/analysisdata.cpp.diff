@@ -1,0 +1,144 @@
+--- cpp/search/analysisdata.cpp [lightvector:master]+++ cpp/search/analysisdata.cpp [hzyhhzy:Reversi2022]@@ -10,6 +10,7 @@    resultUtility(0.0),
+    scoreUtility(0.0),
+    winLossValue(0.0),
++   noResultValue(0.0),
+    policyPrior(0.0),
+    scoreMean(0.0),
+    scoreStdev(0.0),
+@@ -25,7 +26,6 @@    symmetry(0),
+    pv(),
+    pvVisits(),
+-   pvEdgeVisits(),
+    node(NULL)
+ {}
+ 
+@@ -39,6 +39,7 @@    resultUtility(other.resultUtility),
+    scoreUtility(other.scoreUtility),
+    winLossValue(other.winLossValue),
++   noResultValue(other.noResultValue),
+    policyPrior(other.policyPrior),
+    scoreMean(other.scoreMean),
+    scoreStdev(other.scoreStdev),
+@@ -54,7 +55,6 @@    symmetry(other.symmetry),
+    pv(other.pv),
+    pvVisits(other.pvVisits),
+-   pvEdgeVisits(other.pvEdgeVisits),
+    node(other.node)
+ {}
+ 
+@@ -68,6 +68,7 @@    resultUtility(other.resultUtility),
+    scoreUtility(other.scoreUtility),
+    winLossValue(other.winLossValue),
++   noResultValue(other.noResultValue),
+    policyPrior(other.policyPrior),
+    scoreMean(other.scoreMean),
+    scoreStdev(other.scoreStdev),
+@@ -83,7 +84,6 @@    symmetry(other.symmetry),
+    pv(std::move(other.pv)),
+    pvVisits(std::move(other.pvVisits)),
+-   pvEdgeVisits(std::move(other.pvEdgeVisits)),
+    node(other.node)
+ {}
+ 
+@@ -102,6 +102,7 @@   resultUtility = other.resultUtility;
+   scoreUtility = other.scoreUtility;
+   winLossValue = other.winLossValue;
++  noResultValue = other.noResultValue;
+   policyPrior = other.policyPrior;
+   scoreMean = other.scoreMean;
+   scoreStdev = other.scoreStdev;
+@@ -117,7 +118,6 @@   symmetry = other.symmetry;
+   pv = other.pv;
+   pvVisits = other.pvVisits;
+-  pvEdgeVisits = other.pvEdgeVisits;
+   node = other.node;
+   return *this;
+ }
+@@ -134,6 +134,7 @@   resultUtility = other.resultUtility;
+   scoreUtility = other.scoreUtility;
+   winLossValue = other.winLossValue;
++  noResultValue = other.noResultValue;
+   policyPrior = other.policyPrior;
+   scoreMean = other.scoreMean;
+   scoreStdev = other.scoreStdev;
+@@ -149,7 +150,6 @@   symmetry = other.symmetry;
+   pv = std::move(other.pv);
+   pvVisits = std::move(other.pvVisits);
+-  pvEdgeVisits = std::move(other.pvEdgeVisits);
+   node = other.node;
+   return *this;
+ }
+@@ -197,74 +197,3 @@     out << pvVisits[j];
+   }
+ }
+-void AnalysisData::writePVEdgeVisits(std::ostream& out) const {
+-  for(int j = 0; j<pvEdgeVisits.size(); j++) {
+-    if(j > 0)
+-      out << " ";
+-    out << pvEdgeVisits[j];
+-  }
+-}
+-
+-int AnalysisData::getPVLenUpToPhaseEnd(const Board& initialBoard, const BoardHistory& initialHist, Player initialPla) const {
+-  Board board(initialBoard);
+-  BoardHistory hist(initialHist);
+-  Player nextPla = initialPla;
+-  int j;
+-  for(j = 0; j<pv.size(); j++) {
+-    hist.makeBoardMoveAssumeLegal(board,pv[j],nextPla,NULL);
+-    nextPla = getOpp(nextPla);
+-    if(hist.encorePhase != initialHist.encorePhase)
+-      break;
+-  }
+-  return j;
+-}
+-
+-void AnalysisData::writePVUpToPhaseEnd(std::ostream& out, const Board& initialBoard, const BoardHistory& initialHist, Player initialPla) const {
+-  Board board(initialBoard);
+-  BoardHistory hist(initialHist);
+-  Player nextPla = initialPla;
+-  for(int j = 0; j<pv.size(); j++) {
+-    if(j > 0)
+-      out << " ";
+-    out << Location::toString(pv[j],board);
+-
+-    hist.makeBoardMoveAssumeLegal(board,pv[j],nextPla,NULL);
+-    nextPla = getOpp(nextPla);
+-    if(hist.encorePhase != initialHist.encorePhase)
+-      break;
+-  }
+-}
+-
+-void AnalysisData::writePVVisitsUpToPhaseEnd(std::ostream& out, const Board& initialBoard, const BoardHistory& initialHist, Player initialPla) const {
+-  Board board(initialBoard);
+-  BoardHistory hist(initialHist);
+-  Player nextPla = initialPla;
+-  assert(pv.size() == pvVisits.size());
+-  for(int j = 0; j<pv.size(); j++) {
+-    if(j > 0)
+-      out << " ";
+-    out << pvVisits[j];
+-
+-    hist.makeBoardMoveAssumeLegal(board,pv[j],nextPla,NULL);
+-    nextPla = getOpp(nextPla);
+-    if(hist.encorePhase != initialHist.encorePhase)
+-      break;
+-  }
+-}
+-
+-void AnalysisData::writePVEdgeVisitsUpToPhaseEnd(std::ostream& out, const Board& initialBoard, const BoardHistory& initialHist, Player initialPla) const {
+-  Board board(initialBoard);
+-  BoardHistory hist(initialHist);
+-  Player nextPla = initialPla;
+-  assert(pv.size() == pvEdgeVisits.size());
+-  for(int j = 0; j<pv.size(); j++) {
+-    if(j > 0)
+-      out << " ";
+-    out << pvEdgeVisits[j];
+-
+-    hist.makeBoardMoveAssumeLegal(board,pv[j],nextPla,NULL);
+-    nextPla = getOpp(nextPla);
+-    if(hist.encorePhase != initialHist.encorePhase)
+-      break;
+-  }
+-}

@@ -1,0 +1,59 @@
+--- cpp/dataio/trainingwrite.h [lightvector:master]+++ cpp/dataio/trainingwrite.h [hzyhhzy:Reversi2022]@@ -36,9 +36,6 @@   Player pla;
+   int64_t unreducedNumVisits;
+   std::vector<PolicyTargetMove> policyTarget;
+-  double policySurprise;
+-  double policyEntropy;
+-  double searchEntropy;
+   ValueTargets whiteValueTargets;
+   NNRawStats nnRawStats;
+   float targetWeight;
+@@ -70,24 +67,18 @@   bool hitTurnLimit;
+ 
+   //Metadata about how the game was initialized
+-  int numExtraBlack;
+   int mode;
+-  int beganInEncorePhase;
+   int usedInitialPosition;
+   //This differs from numExtraBlack in that numExtraBlack counts number of extra black stones
+   //played following the start of startHist, whereas handicapForSgf counts from startBoard.
+   //So on things like forked handicap games this one will be larger. Also this one does the
+   //whole +1 thing, skipping 1H.
+-  int handicapForSgf;
+ 
+   //If false, then we don't have these below vectors and ownership information
+   bool hasFullData;
+   std::vector<float> targetWeightByTurn;
+   std::vector<float> targetWeightByTurnUnrounded;
+   std::vector<PolicyTarget> policyTargetsByTurn;
+-  std::vector<double> policySurpriseByTurn;
+-  std::vector<double> policyEntropyByTurn;
+-  std::vector<double> searchEntropyByTurn;
+   std::vector<ValueTargets> whiteValueTargetsByTurn; //Except this one, we may have some of
+   std::vector<NNRawStats> nnRawStatsByTurn;
+   Color* finalFullArea;
+@@ -107,7 +98,6 @@   static constexpr int MODE_NORMAL = 0;
+   static constexpr int MODE_CLEANUP_TRAINING = 1;
+   static constexpr int MODE_FORK = 2;
+-  static constexpr int MODE_HANDICAP = 3;
+   static constexpr int MODE_SGFPOS = 4;
+   static constexpr int MODE_HINTPOS = 5;
+   static constexpr int MODE_HINTFORK = 6;
+@@ -164,9 +154,7 @@   //C27: Weight assigned to the final board ownership target and score distr targets. Most training rows will have this be 1, some will be 0.
+   //C28: Weight assigned to the next move policy target
+   //C29: Weight assigned to the lead target
+-  //C30: Policy Surprise (for statistical purposes)
+-  //C31: Policy Entropy (for statistical purposes)
+-  //C32: Search Entropy (for statistical purposes)
++  //C30-32: Unused
+   //C33: Weight assigned to the future position targets valueTargetsNCHW C1-C2
+   //C34: Weight assigned to the area/territory target valueTargetsNCHW C4
+   //C35: Unused
+@@ -239,9 +227,6 @@     int64_t unreducedNumVisits,
+     const std::vector<PolicyTargetMove>* policyTarget0, //can be null
+     const std::vector<PolicyTargetMove>* policyTarget1, //can be null
+-    double policySurprise,
+-    double policyEntropy,
+-    double searchEntropy,
+     const std::vector<ValueTargets>& whiteValueTargets,
+     int whiteValueTargetsIdx, //index in whiteValueTargets corresponding to this turn.
+     const NNRawStats& nnRawStats,

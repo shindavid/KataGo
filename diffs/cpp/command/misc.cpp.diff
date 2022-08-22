@@ -1,0 +1,456 @@
+--- cpp/command/misc.cpp [lightvector:master]+++ cpp/command/misc.cpp [hzyhhzy:Reversi2022]@@ -59,9 +59,6 @@   cout << NNPos::locToPos(moveLoc,board.x_size,nnXLen,nnYLen) << " ";
+ 
+   cout << baseHist.moveHistory.size() << " ";
+-  cout << board.numBlackCaptures << " ";
+-  cout << board.numWhiteCaptures << " ";
+-
+   for(int y = 0; y<board.y_size; y++) {
+     for(int x = 0; x<board.x_size; x++) {
+       Loc loc = Location::getLoc(x,y,board.x_size);
+@@ -87,12 +84,14 @@     cout << NNPos::locToPos(data.move,board.x_size,nnXLen,nnYLen) << " ";
+     cout << data.numVisits << " ";
+     cout << data.winLossValue << " ";
++    cout << data.noResultValue << " ";
+     cout << data.scoreMean << " ";
+     cout << data.scoreStdev << " ";
+     cout << data.policyPrior << " ";
+   }
+ 
+-  vector<double> ownership = search->getAverageTreeOwnership();
++  int minVisits = 3;
++  vector<double> ownership = search->getAverageTreeOwnership(minVisits);
+   for(int y = 0; y<board.y_size; y++) {
+     for(int x = 0; x<board.x_size; x++) {
+       int pos = NNPos::xyToPos(x,y,nnXLen);
+@@ -120,7 +119,7 @@ 
+   board = Board(size,size);
+   pla = P_BLACK;
+-  hist.clear(board,pla,Rules::getTrompTaylorish(),0);
++  hist.clear(board,pla,Rules::getTrompTaylorish());
+   bot->setPosition(pla,board,hist);
+ 
+   if(size == 19) {
+@@ -328,10 +327,10 @@           break;
+ 
+         //Make the move!
+-        hist.makeBoardMoveAssumeLegal(board,nextMove.loc,nextMove.pla,NULL);
++        hist.makeBoardMoveAssumeLegal(board,nextMove.loc,nextMove.pla);
+         pla = getOpp(pla);
+ 
+-        hist.clear(board,pla,hist.rules,0);
++        hist.clear(board,pla,hist.rules);
+         bot->setPosition(pla,board,hist);
+ 
+         movesPlayed.push_back(nextMove);
+@@ -364,7 +363,6 @@ 
+ int MainCmds::demoplay(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
+   Rand seedRand;
+ 
+   ConfigParser cfg;
+@@ -390,7 +388,7 @@     return 1;
+   }
+ 
+-  Logger logger(&cfg);
++  Logger logger;
+   logger.addFile(logFile);
+ 
+   logger.write("Engine starting...");
+@@ -438,7 +436,7 @@ 
+     Player pla = P_BLACK;
+     Board baseBoard;
+-    BoardHistory baseHist(baseBoard,pla,Rules::getTrompTaylorish(),0);
++    BoardHistory baseHist(baseBoard,pla,Rules::getTrompTaylorish());
+     TimeControls tc;
+ 
+     initializeDemoGame(baseBoard, baseHist, pla, gameRand, bot);
+@@ -458,7 +456,6 @@     //Move loop
+     int maxMovesPerGame = 1600;
+     for(int i = 0; i<maxMovesPerGame; i++) {
+-      baseHist.endGameIfAllPassAlive(baseBoard);
+       if(baseHist.isGameFinished)
+         break;
+ 
+@@ -470,7 +467,7 @@           PlayUtils::getSearchFactor(searchFactorWhenWinningThreshold,searchFactorWhenWinning,params,recentWinLossValues,P_BLACK),
+           PlayUtils::getSearchFactor(searchFactorWhenWinningThreshold,searchFactorWhenWinning,params,recentWinLossValues,P_WHITE)
+         );
+-      Loc moveLoc = bot->genMoveSynchronousAnalyze(pla,tc,searchFactor,callbackPeriod,callbackPeriod,callback);
++      Loc moveLoc = bot->genMoveSynchronousAnalyze(pla,tc,searchFactor,callbackPeriod,callback);
+ 
+       bool isLegal = bot->isLegalStrict(moveLoc,pla);
+       if(moveLoc == Board::NULL_LOC || !isLegal) {
+@@ -524,7 +521,7 @@       else {
+         //And make the move on our copy of the board
+         assert(baseHist.isLegal(baseBoard,moveLoc,pla));
+-        baseHist.makeBoardMoveAssumeLegal(baseBoard,moveLoc,pla,NULL);
++        baseHist.makeBoardMoveAssumeLegal(baseBoard,moveLoc,pla);
+ 
+         //If the game is over, skip making the move on the bot, to preserve
+         //the last known value of the search tree for display purposes
+@@ -552,7 +549,6 @@   delete bot;
+   delete nnEval;
+   NeuralNet::globalCleanup();
+-  ScoreValue::freeTables();
+ 
+   logger.write("All cleaned up, quitting");
+   return 0;
+@@ -574,7 +570,6 @@ 
+ int MainCmds::samplesgfs(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
+   Rand seedRand;
+ 
+   vector<string> sgfDirs;
+@@ -585,11 +580,9 @@   int64_t maxDepth;
+   int64_t maxNodeCount;
+   int64_t maxBranchCount;
+-  bool flipIfPassOrWFirst;
+ 
+   int minMinRank;
+   string requiredPlayerName;
+-  int maxHandicap;
+   double maxKomi;
+ 
+   try {
+@@ -603,10 +596,8 @@     TCLAP::ValueArg<string> maxDepthArg("","max-depth","Max depth allowed for sgf",false,"100000000","INT");
+     TCLAP::ValueArg<string> maxNodeCountArg("","max-node-count","Max node count allowed for sgf",false,"100000000","INT");
+     TCLAP::ValueArg<string> maxBranchCountArg("","max-branch-count","Max branch count allowed for sgf",false,"100000000","INT");
+-    TCLAP::SwitchArg flipIfPassOrWFirstArg("","flip-if-pass","Try to heuristically find cases where an sgf passes to simulate white<->black");
+     TCLAP::ValueArg<int> minMinRankArg("","min-min-rank","Require both players in a game to have rank at least this",false,Sgf::RANK_UNKNOWN,"INT");
+     TCLAP::ValueArg<string> requiredPlayerNameArg("","required-player-name","Require player making the move to have this name",false,string(),"NAME");
+-    TCLAP::ValueArg<int> maxHandicapArg("","max-handicap","Require no more than this big handicap in stones",false,100,"INT");
+     TCLAP::ValueArg<double> maxKomiArg("","max-komi","Require absolute value of game komi to be at most this",false,1000,"KOMI");
+     cmd.add(sgfDirArg);
+     cmd.add(outDirArg);
+@@ -616,10 +607,8 @@     cmd.add(maxDepthArg);
+     cmd.add(maxNodeCountArg);
+     cmd.add(maxBranchCountArg);
+-    cmd.add(flipIfPassOrWFirstArg);
+     cmd.add(minMinRankArg);
+     cmd.add(requiredPlayerNameArg);
+-    cmd.add(maxHandicapArg);
+     cmd.add(maxKomiArg);
+     cmd.parseArgs(args);
+     sgfDirs = sgfDirArg.getValue();
+@@ -630,10 +619,8 @@     maxDepth = Global::stringToInt64(maxDepthArg.getValue());
+     maxNodeCount = Global::stringToInt64(maxNodeCountArg.getValue());
+     maxBranchCount = Global::stringToInt64(maxBranchCountArg.getValue());
+-    flipIfPassOrWFirst = flipIfPassOrWFirstArg.getValue();
+     minMinRank = minMinRankArg.getValue();
+     requiredPlayerName = requiredPlayerNameArg.getValue();
+-    maxHandicap = maxHandicapArg.getValue();
+     maxKomi = maxKomiArg.getValue();
+   }
+   catch (TCLAP::ArgException &e) {
+@@ -643,8 +630,8 @@ 
+   MakeDir::make(outDir);
+ 
+-  const bool logToStdout = true;
+-  Logger logger(nullptr, logToStdout);
++  Logger logger;
++  logger.setLogToStdout(true);
+   logger.addFile(outDir + "/" + "log.log");
+   for(const string& arg: args)
+     logger.write(string("Command: ") + arg);
+@@ -667,8 +654,6 @@   };
+ 
+   auto isSgfOkay = [&](const Sgf* sgf) {
+-    if(maxHandicap < 100 && sgf->getHandicapValue() > maxHandicap)
+-      return false;
+     if(sgf->depth() > maxDepth)
+       return false;
+     if(std::fabs(sgf->getKomi()) > maxKomi)
+@@ -774,7 +759,7 @@     bool hashComments = false;
+     bool hashParent = false;
+     Rand iterRand;
+-    sgf->iterAllUniquePositions(uniqueHashes, hashComments, hashParent, flipIfPassOrWFirst, &iterRand, posHandler);
++    sgf->iterAllUniquePositions(uniqueHashes, hashComments, hashParent, &iterRand, posHandler);
+   };
+ 
+   for(size_t i = 0; i<sgfFiles.size(); i++) {
+@@ -802,7 +787,6 @@ 
+   logger.write("All done");
+ 
+-  ScoreValue::freeTables();
+   return 0;
+ }
+ 
+@@ -819,7 +803,7 @@   if(moveLoc != Board::NULL_LOC) {
+     if(!hist.isLegal(newBoard,moveLoc,newNextPla))
+       return false;
+-    newHist.makeBoardMoveAssumeLegal(newBoard,moveLoc,newNextPla,NULL);
++    newHist.makeBoardMoveAssumeLegal(newBoard,moveLoc,newNextPla);
+     newNextPla = getOpp(newNextPla);
+   }
+ 
+@@ -873,7 +857,6 @@ 
+ int MainCmds::dataminesgfs(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
+   Rand seedRand;
+ 
+   ConfigParser cfg;
+@@ -897,7 +880,6 @@   int minRank;
+   int minMinRank;
+   string requiredPlayerName;
+-  int maxHandicap;
+   double maxKomi;
+   double maxAutoKomi;
+   double maxPolicy;
+@@ -926,7 +908,6 @@     TCLAP::ValueArg<int> minRankArg("","min-rank","Require player making the move to have rank at least this",false,Sgf::RANK_UNKNOWN,"INT");
+     TCLAP::ValueArg<int> minMinRankArg("","min-min-rank","Require both players in a game to have rank at least this",false,Sgf::RANK_UNKNOWN,"INT");
+     TCLAP::ValueArg<string> requiredPlayerNameArg("","required-player-name","Require player making the move to have this name",false,string(),"NAME");
+-    TCLAP::ValueArg<int> maxHandicapArg("","max-handicap","Require no more than this big handicap in stones",false,100,"INT");
+     TCLAP::ValueArg<double> maxKomiArg("","max-komi","Require absolute value of game komi to be at most this",false,1000,"KOMI");
+     TCLAP::ValueArg<double> maxAutoKomiArg("","max-auto-komi","If absolute value of auto komi would exceed this, skip position",false,1000,"KOMI");
+     TCLAP::ValueArg<double> maxPolicyArg("","max-policy","Chop off moves with raw policy more than this",false,1,"POLICY");
+@@ -948,7 +929,6 @@     cmd.add(minRankArg);
+     cmd.add(minMinRankArg);
+     cmd.add(requiredPlayerNameArg);
+-    cmd.add(maxHandicapArg);
+     cmd.add(maxKomiArg);
+     cmd.add(maxAutoKomiArg);
+     cmd.add(maxPolicyArg);
+@@ -973,7 +953,6 @@     minRank = minRankArg.getValue();
+     minMinRank = minMinRankArg.getValue();
+     requiredPlayerName = requiredPlayerNameArg.getValue();
+-    maxHandicap = maxHandicapArg.getValue();
+     maxKomi = maxKomiArg.getValue();
+     maxAutoKomi = maxAutoKomiArg.getValue();
+     maxPolicy = maxPolicyArg.getValue();
+@@ -990,8 +969,8 @@ 
+   MakeDir::make(outDir);
+ 
+-  const bool logToStdoutDefault = true;
+-  Logger logger(&cfg, logToStdoutDefault);
++  Logger logger;
++  logger.setLogToStdout(true);
+   logger.addFile(outDir + "/" + "log.log");
+   for(const string& arg: args)
+     logger.write(string("Command: ") + arg);
+@@ -1107,8 +1086,6 @@   };
+ 
+   auto isSgfOkay = [&](const Sgf* sgf) {
+-    if(maxHandicap < 100 && sgf->getHandicapValue() > maxHandicap)
+-      return false;
+     if(sgf->depth() > maxDepth)
+       return false;
+     if(std::fabs(sgf->getKomi()) > maxKomi)
+@@ -1122,7 +1099,7 @@     return true;
+   };
+ 
+-  auto expensiveEvaluateMove = [&toWriteQueue,&turnWeightLambda,&maxAutoKomi,&maxHandicap,&numFilteredIndivdualPoses](
++  auto expensiveEvaluateMove = [&toWriteQueue,&turnWeightLambda,&maxAutoKomi,&numFilteredIndivdualPoses](
+     Search* search, Loc missedLoc,
+     Player nextPla, const Board& board, const BoardHistory& hist,
+     const Sgf::PositionSample& sample, bool markedAsHintPos
+@@ -1131,10 +1108,6 @@       return;
+ 
+     if(std::fabs(hist.rules.komi) > maxAutoKomi) {
+-      numFilteredIndivdualPoses.fetch_add(1);
+-      return;
+-    }
+-    if(hist.computeNumHandicapStones() > maxHandicap) {
+       numFilteredIndivdualPoses.fetch_add(1);
+       return;
+     }
+@@ -1250,7 +1223,7 @@   // ---------------------------------------------------------------------------------------------------
+   //SGF MODE
+ 
+-  auto processSgfGame = [&logger,&gameInit,&nnEval,&expensiveEvaluateMove,autoKomi,&gameModeFastThreshold,&maxDepth,&numFilteredSgfs,&maxHandicap,&maxPolicy](
++  auto processSgfGame = [&logger,&gameInit,&nnEval,&expensiveEvaluateMove,autoKomi,&gameModeFastThreshold,&maxDepth,&numFilteredSgfs,&maxPolicy](
+     Search* search, Rand& rand, const string& fileName, CompactSgf* sgf, bool blackOkay, bool whiteOkay
+   ) {
+     //Don't use the SGF rules - randomize them for a bit more entropy
+@@ -1269,14 +1242,9 @@       return;
+     }
+ 
+-    const bool preventEncore = true;
+     const vector<Move>& sgfMoves = sgf->moves;
+ 
+-    if((int64_t)sgfMoves.size() > maxDepth) {
+-      numFilteredSgfs.fetch_add(1);
+-      return;
+-    }
+-    if(hist.computeNumHandicapStones() > maxHandicap) {
++    if(sgfMoves.size() > maxDepth) {
+       numFilteredSgfs.fetch_add(1);
+       return;
+     }
+@@ -1325,7 +1293,7 @@         break;
+ 
+       //Quit out if according to our rules, we already finished the game, or we're somehow in a cleanup phase
+-      if(hist.isGameFinished || hist.encorePhase > 0)
++      if(hist.isGameFinished )
+         break;
+ 
+       //Quit out if consecutive moves by the same player, to keep the history clean and "normal"
+@@ -1337,12 +1305,12 @@       bool suc = hist.isLegal(board,sgfMoves[m].loc,sgfMoves[m].pla);
+       if(!suc) {
+         //Only log on errors that aren't simply due to ko rules, but quit out regardless
+-        suc = hist.makeBoardMoveTolerant(board,sgfMoves[m].loc,sgfMoves[m].pla,preventEncore);
++        suc = hist.makeBoardMoveTolerant(board,sgfMoves[m].loc,sgfMoves[m].pla);
+         if(!suc)
+           logger.write("Illegal move in " + fileName + " turn " + Global::intToString(m) + " move " + Location::toString(sgfMoves[m].loc, board.x_size, board.y_size));
+         break;
+       }
+-      hist.makeBoardMoveAssumeLegal(board,sgfMoves[m].loc,sgfMoves[m].pla,NULL,preventEncore);
++      hist.makeBoardMoveAssumeLegal(board,sgfMoves[m].loc,sgfMoves[m].pla);
+       nextPla = getOpp(sgfMoves[m].pla);
+     }
+     boards.push_back(board);
+@@ -1521,15 +1489,14 @@     Rules rules = gameInit->createRules();
+ 
+     //Now play the rest of the moves out, except the last, which we keep as the potential hintloc
+-    int encorePhase = 0;
+     Player pla = sample.nextPla;
+-    BoardHistory hist(board,pla,rules,encorePhase);
++    BoardHistory hist(board,pla,rules);
+     int numSampleMoves = (int)sample.moves.size();
+     for(int i = 0; i<numSampleMoves; i++) {
+       if(!hist.isLegal(board,sample.moves[i].loc,sample.moves[i].pla))
+         return;
+       assert(sample.moves[i].pla == pla);
+-      hist.makeBoardMoveAssumeLegal(board,sample.moves[i].loc,sample.moves[i].pla,NULL);
++      hist.makeBoardMoveAssumeLegal(board,sample.moves[i].loc,sample.moves[i].pla);
+       pla = getOpp(pla);
+     }
+ 
+@@ -1580,10 +1547,6 @@       return;
+     sample.weight = weight;
+ 
+-    if(flipIfPassOrWFirst) {
+-      if(treeHist.hasBlackPassOrWhiteFirst())
+-        sample = sample.getColorFlipped();
+-    }
+ 
+     expensiveEvaluateMove(
+       search, sample.hintLoc, pla, board, hist,
+@@ -1717,7 +1680,7 @@       try {
+         bool hashParent = true; //Hash parent so that we distinguish hint moves that reach the same position but were different moves from different starting states.
+         sgf->iterAllUniquePositions(
+-          uniqueHashes, hashComments, hashParent, flipIfPassOrWFirst, &seedRand, [&](Sgf::PositionSample& unusedSample, const BoardHistory& hist, const string& comments) {
++          uniqueHashes, hashComments, hashParent,  &seedRand, [&](Sgf::PositionSample& unusedSample, const BoardHistory& hist, const string& comments) {
+             if(comments.size() > 0 && comments.find("%NOHINT%") != string::npos)
+               return;
+             if(hist.moveHistory.size() <= 0)
+@@ -1774,7 +1737,6 @@   delete gameInit;
+   delete nnEval;
+   NeuralNet::globalCleanup();
+-  ScoreValue::freeTables();
+   return 0;
+ }
+ 
+@@ -1783,7 +1745,6 @@ 
+ int MainCmds::trystartposes(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
+   Rand seedRand;
+ 
+   ConfigParser cfg;
+@@ -1811,8 +1772,8 @@     return 1;
+   }
+ 
+-  const bool logToStdoutDefault = true;
+-  Logger logger(&cfg, logToStdoutDefault);
++  Logger logger;
++  logger.setLogToStdout(true);
+ 
+   SearchParams params = Setup::loadSingleParams(cfg,Setup::SETUP_FOR_ANALYSIS);
+   //Ignore temperature, noise
+@@ -1875,11 +1836,11 @@     Board board = startPos.board;
+     Player pla = startPos.nextPla;
+     BoardHistory hist;
+-    hist.clear(board,pla,rules,0);
++    hist.clear(board,pla,rules);
+     hist.setInitialTurnNumber(startPos.initialTurnNumber);
+     bool allLegal = true;
+     for(size_t i = 0; i<startPos.moves.size(); i++) {
+-      bool isLegal = hist.makeBoardMoveTolerant(board,startPos.moves[i].loc,startPos.moves[i].pla,false);
++      bool isLegal = hist.makeBoardMoveTolerant(board,startPos.moves[i].loc,startPos.moves[i].pla);
+       if(!isLegal) {
+         allLegal = false;
+         break;
+@@ -1932,14 +1893,14 @@   delete search;
+   delete nnEval;
+   NeuralNet::globalCleanup();
+-  ScoreValue::freeTables();
++   
+   return 0;
+ }
+ 
+ 
+ int MainCmds::viewstartposes(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
++   
+ 
+   ConfigParser cfg;
+   string modelFile;
+@@ -1969,9 +1930,8 @@   }
+ 
+   Rand rand;
+-
+-  const bool logToStdoutDefault = true;
+-  Logger logger(&cfg, logToStdoutDefault);
++  Logger logger;
++  logger.setLogToStdout(true);
+ 
+   Rules rules;
+   AsyncBot* bot = NULL;
+@@ -2030,12 +1990,12 @@     Board board = startPos.board;
+     Player pla = startPos.nextPla;
+     BoardHistory hist;
+-    hist.clear(board,pla,rules,0);
++    hist.clear(board,pla,rules);
+     hist.setInitialTurnNumber(startPos.initialTurnNumber);
+ 
+     bool allLegal = true;
+     for(size_t i = 0; i<startPos.moves.size(); i++) {
+-      bool isLegal = hist.makeBoardMoveTolerant(board,startPos.moves[i].loc,startPos.moves[i].pla,false);
++      bool isLegal = hist.makeBoardMoveTolerant(board,startPos.moves[i].loc,startPos.moves[i].pla);
+       if(!isLegal) {
+         allLegal = false;
+         break;
+@@ -2080,14 +2040,14 @@   if(nnEval != NULL)
+     delete nnEval;
+ 
+-  ScoreValue::freeTables();
++   
+   return 0;
+ }
+ 
+ 
+ int MainCmds::sampleinitializations(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
++   
+ 
+   ConfigParser cfg;
+   string modelFile;
+@@ -2117,9 +2077,8 @@   }
+ 
+   Rand rand;
+-
+-  const bool logToStdoutDefault = true;
+-  Logger logger(&cfg, logToStdoutDefault);
++  Logger logger;
++  logger.setLogToStdout(true);
+ 
+   NNEvaluator* nnEval = NULL;
+   if(cfg.getFileName() != "") {
+@@ -2173,7 +2132,6 @@       nullptr,
+       nullptr,
+       nullptr,
+-      nullptr,
+       nullptr
+     );
+ 
+@@ -2196,6 +2154,6 @@   if(nnEval != NULL)
+     delete nnEval;
+ 
+-  ScoreValue::freeTables();
++   
+   return 0;
+ }

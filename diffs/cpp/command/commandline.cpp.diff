@@ -1,0 +1,63 @@
+--- cpp/command/commandline.cpp [lightvector:master]+++ cpp/command/commandline.cpp [hzyhhzy:Reversi2022]@@ -222,7 +222,7 @@   assert(configFileArg == NULL);
+   defaultConfigFileName = defaultCfgFileName;
+ 
+-  string helpDesc = "Config file(s) to use, can be one or multiple files";
++  string helpDesc = "Config file to use";
+   if(!exampleConfigFile.empty())
+     helpDesc += " (see " + exampleConfigFile + " or configs/" + exampleConfigFile + ")";
+   helpDesc += ".";
+@@ -231,7 +231,8 @@   }
+   //We don't apply the default directly here, but rather in getConfig(). It's more robust if we don't attempt any
+   //filesystem access (which could fail) before we've even constructed the command arguments and help.
+-  configFileArg = new TCLAP::MultiArg<string>("","config",helpDesc,required,"FILE");
++  string defaultPath = "";
++  configFileArg = new TCLAP::ValueArg<string>("","config",helpDesc,required,defaultPath,"FILE");
+   this->add(*configFileArg);
+ }
+ 
+@@ -271,10 +272,10 @@   return modelFileArg->getValue().empty();
+ }
+ 
+-vector<string> KataGoCommandLine::getConfigFiles() const {
++string KataGoCommandLine::getConfigFile() const {
+   assert(configFileArg != NULL);
+-  vector<string> configFiles = configFileArg->getValue();
+-  if(configFiles.empty() && !defaultConfigFileName.empty()) {
++  string configFile = configFileArg->getValue();
++  if(configFile.empty() && !defaultConfigFileName.empty()) {
+     string pathForErrMsg;
+     try {
+       vector<string> paths = getDefaultConfigPaths(defaultConfigFileName);
+@@ -282,7 +283,7 @@         pathForErrMsg = paths[0];
+       for(const string& path: paths)
+         if(FileUtils::exists(path))
+-          return { path };
++          return path;
+     }
+     catch(const StringError& err) {
+       throw StringError(string("'-config CONFIG_FILE_NAME.cfg was not provided but encountered error searching for default: ") + err.what());
+@@ -291,7 +292,7 @@       pathForErrMsg = getDefaultConfigPathForHelp(defaultConfigFileName);
+     throw StringError("-config CONFIG_FILE_NAME.cfg was not specified to tell KataGo where to find the config, and default was not found at " + pathForErrMsg);
+   }
+-  return configFiles;
++  return configFile;
+ }
+ 
+ void KataGoCommandLine::maybeApplyOverrideConfigArg(ConfigParser& cfg) const {
+@@ -324,15 +325,8 @@ 
+ //cfg must be uninitialized, this will initialize it based on user-provided arguments
+ void KataGoCommandLine::getConfig(ConfigParser& cfg) const {
+-  vector<string> configFiles = getConfigFiles();
+-  assert(!configFiles.empty());
+-  cfg.initialize(configFiles[0]);
+-  if(configFiles.size() > 1) {
+-    configFiles.erase(configFiles.begin());
+-    for(const string& overrideFile : configFiles) {
+-      cfg.overrideKeys(overrideFile);
+-    }
+-  }
++  string configFile = getConfigFile();
++  cfg.initialize(configFile);
+   maybeApplyOverrideConfigArg(cfg);
+ }
+ 

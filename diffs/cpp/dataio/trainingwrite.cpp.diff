@@ -1,0 +1,192 @@
+--- cpp/dataio/trainingwrite.cpp [lightvector:master]+++ cpp/dataio/trainingwrite.cpp [hzyhhzy:Reversi2022]@@ -24,9 +24,6 @@    pla(P_BLACK),
+    unreducedNumVisits(),
+    policyTarget(),
+-   policySurprise(),
+-   policyEntropy(),
+-   searchEntropy(),
+    whiteValueTargets(),
+    targetWeight(),
+    targetWeightUnrounded(),
+@@ -39,9 +36,6 @@    pla(p),
+    unreducedNumVisits(),
+    policyTarget(),
+-   policySurprise(),
+-   policyEntropy(),
+-   searchEntropy(),
+    whiteValueTargets(),
+    targetWeight(1.0f),
+    targetWeightUnrounded(1.0f),
+@@ -71,9 +65,7 @@ 
+    hitTurnLimit(false),
+ 
+-   numExtraBlack(0),
+    mode(0),
+-   beganInEncorePhase(0),
+    usedInitialPosition(0),
+ 
+    hasFullData(false),
+@@ -128,9 +120,7 @@   endHist.printDebugInfo(out,endHist.getRecentBoard(0));
+   out << "gameHash " << gameHash << endl;
+   out << "hitTurnLimit " << hitTurnLimit << endl;
+-  out << "numExtraBlack " << numExtraBlack << endl;
+   out << "mode " << mode << endl;
+-  out << "beganInEncorePhase " << beganInEncorePhase << endl;
+   out << "usedInitialPosition " << usedInitialPosition << endl;
+   out << "hasFullData " << hasFullData << endl;
+   for(int i = 0; i<targetWeightByTurn.size(); i++)
+@@ -145,13 +135,6 @@     }
+     out << endl;
+   }
+-  for (int i = 0; i < policySurpriseByTurn.size(); i++)
+-    out << "policySurpriseByTurn " << i << " " << policySurpriseByTurn[i] << endl;
+-  for (int i = 0; i < policyEntropyByTurn.size(); i++)
+-    out << "policyEntropyByTurn " << i << " " << policyEntropyByTurn[i] << endl;
+-  for (int i = 0; i < searchEntropyByTurn.size(); i++)
+-    out << "searchEntropyByTurn " << i << " " << searchEntropyByTurn[i] << endl;
+-
+   for(int i = 0; i<whiteValueTargetsByTurn.size(); i++) {
+     out << "whiteValueTargetsByTurn " << i << " ";
+     out << whiteValueTargetsByTurn[i].win << " ";
+@@ -354,9 +337,6 @@   int64_t unreducedNumVisits,
+   const vector<PolicyTargetMove>* policyTarget0, //can be null
+   const vector<PolicyTargetMove>* policyTarget1, //can be null
+-  double policySurprise,
+-  double policyEntropy,
+-  double searchEntropy,
+   const vector<ValueTargets>& whiteValueTargets,
+   int whiteValueTargetsIdx, //index in whiteValueTargets corresponding to this turn.
+   const NNRawStats& nnRawStats,
+@@ -389,27 +369,8 @@     float* rowBin = binaryInputNCHWUnpacked;
+     float* rowGlobal = globalInputNC.data + curRows * numGlobalChannels;
+     static_assert(NNModelVersion::latestInputsVersionImplemented == 7, "");
+-    if(inputsVersion == 3) {
+-      assert(NNInputs::NUM_FEATURES_SPATIAL_V3 == numBinaryChannels);
+-      assert(NNInputs::NUM_FEATURES_GLOBAL_V3 == numGlobalChannels);
+-      NNInputs::fillRowV3(board, hist, nextPlayer, nnInputParams, dataXLen, dataYLen, inputsUseNHWC, rowBin, rowGlobal);
+-    }
+-    else if(inputsVersion == 4) {
+-      assert(NNInputs::NUM_FEATURES_SPATIAL_V4 == numBinaryChannels);
+-      assert(NNInputs::NUM_FEATURES_GLOBAL_V4 == numGlobalChannels);
+-      NNInputs::fillRowV4(board, hist, nextPlayer, nnInputParams, dataXLen, dataYLen, inputsUseNHWC, rowBin, rowGlobal);
+-    }
+-    else if(inputsVersion == 5) {
+-      assert(NNInputs::NUM_FEATURES_SPATIAL_V5 == numBinaryChannels);
+-      assert(NNInputs::NUM_FEATURES_GLOBAL_V5 == numGlobalChannels);
+-      NNInputs::fillRowV5(board, hist, nextPlayer, nnInputParams, dataXLen, dataYLen, inputsUseNHWC, rowBin, rowGlobal);
+-    }
+-    else if(inputsVersion == 6) {
+-      assert(NNInputs::NUM_FEATURES_SPATIAL_V6 == numBinaryChannels);
+-      assert(NNInputs::NUM_FEATURES_GLOBAL_V6 == numGlobalChannels);
+-      NNInputs::fillRowV6(board, hist, nextPlayer, nnInputParams, dataXLen, dataYLen, inputsUseNHWC, rowBin, rowGlobal);
+-    }
+-    else if(inputsVersion == 7) {
++    
++    if(inputsVersion == 7) {
+       assert(NNInputs::NUM_FEATURES_SPATIAL_V7 == numBinaryChannels);
+       assert(NNInputs::NUM_FEATURES_GLOBAL_V7 == numGlobalChannels);
+       NNInputs::fillRowV7(board, hist, nextPlayer, nnInputParams, dataXLen, dataYLen, inputsUseNHWC, rowBin, rowGlobal);
+@@ -492,9 +453,9 @@   //Unused
+   rowGlobal[23] = 0.0f;
+   rowGlobal[24] = 0.0f;
+-  rowGlobal[30] = (float)policySurprise;
+-  rowGlobal[31] = (float)policyEntropy;
+-  rowGlobal[32] = (float)searchEntropy;
++  rowGlobal[30] = 0.0f;
++  rowGlobal[31] = 0.0f;
++  rowGlobal[32] = 0.0f;
+   rowGlobal[35] = 0.0f;
+ 
+   //Fill in whether we should use history or not
+@@ -520,7 +481,7 @@ 
+   //Various other data
+   rowGlobal[47] = hist.currentSelfKomi(nextPlayer,data.drawEquivalentWinsForWhite);
+-  rowGlobal[48] = (hist.encorePhase == 2 || hist.rules.scoringRule == Rules::SCORING_AREA) ? 1.0f : 0.0f;
++  rowGlobal[48] =  1.0f ;
+ 
+   //Earlier neural net metadata
+   rowGlobal[49] = data.changedNeuralNets.size() > 0 ? 1.0f : 0.0f;
+@@ -530,7 +491,7 @@   rowGlobal[51] = (float)turnIdx;
+   rowGlobal[52] = data.hitTurnLimit ? 1.0f : 0.0f;
+   rowGlobal[53] = (float)data.startHist.moveHistory.size();
+-  rowGlobal[54] = (float)data.numExtraBlack;
++  rowGlobal[54] = 0.0f;
+ 
+   //Metadata about how the game was initialized
+   rowGlobal[55] = (float)data.mode;
+@@ -548,9 +509,7 @@   {
+     //Possibly this should count whiteHandicapBonusScore too, but in selfplay this never changes
+     //after the start of a game
+-    float whiteBonusPoints = data.endHist.whiteBonusScore - hist.whiteBonusScore;
+-    float selfBonusPoints = (nextPlayer == P_WHITE ? whiteBonusPoints : -whiteBonusPoints);
+-    rowGlobal[61] = selfBonusPoints != 0 ? selfBonusPoints : 0.0f; //Conditional avoids negative zero
++    rowGlobal[61] =  0.0f; //Conditional avoids negative zero
+   }
+ 
+   //Unused
+@@ -808,23 +767,7 @@   //Note that this inputsVersion is for data writing, it might be different than the inputsVersion used
+   //to feed into a model during selfplay
+   static_assert(NNModelVersion::latestInputsVersionImplemented == 7, "");
+-  if(inputsVersion == 3) {
+-    numBinaryChannels = NNInputs::NUM_FEATURES_SPATIAL_V3;
+-    numGlobalChannels = NNInputs::NUM_FEATURES_GLOBAL_V3;
+-  }
+-  else if(inputsVersion == 4) {
+-    numBinaryChannels = NNInputs::NUM_FEATURES_SPATIAL_V4;
+-    numGlobalChannels = NNInputs::NUM_FEATURES_GLOBAL_V4;
+-  }
+-  else if(inputsVersion == 5) {
+-    numBinaryChannels = NNInputs::NUM_FEATURES_SPATIAL_V5;
+-    numGlobalChannels = NNInputs::NUM_FEATURES_GLOBAL_V5;
+-  }
+-  else if(inputsVersion == 6) {
+-    numBinaryChannels = NNInputs::NUM_FEATURES_SPATIAL_V6;
+-    numGlobalChannels = NNInputs::NUM_FEATURES_GLOBAL_V6;
+-  }
+-  else if(inputsVersion == 7) {
++  if(inputsVersion == 7) {
+     numBinaryChannels = NNInputs::NUM_FEATURES_SPATIAL_V7;
+     numGlobalChannels = NNInputs::NUM_FEATURES_GLOBAL_V7;
+   }
+@@ -899,9 +842,6 @@   assert(data.targetWeightByTurn.size() == numMoves);
+   assert(data.targetWeightByTurnUnrounded.size() == numMoves);
+   assert(data.policyTargetsByTurn.size() == numMoves);
+-  assert(data.policySurpriseByTurn.size() == numMoves);
+-  assert(data.policyEntropyByTurn.size() == numMoves);
+-  assert(data.searchEntropyByTurn.size() == numMoves);
+   assert(data.whiteValueTargetsByTurn.size() == numMoves+1);
+   assert(data.nnRawStatsByTurn.size() == numMoves);
+ 
+@@ -943,7 +883,7 @@       Move move = data.endHist.moveHistory[turnIdx];
+       assert(move.pla == nextPlayer);
+       assert(hist.isLegal(board,move.loc,move.pla));
+-      hist.makeBoardMoveAssumeLegal(board, move.loc, move.pla, NULL);
++      hist.makeBoardMoveAssumeLegal(board, move.loc, move.pla);
+       nextPlayer = getOpp(nextPlayer);
+ 
+       posHistForFutureBoards.push_back(board);
+@@ -983,9 +923,6 @@             unreducedNumVisits,
+             policyTarget0,
+             policyTarget1,
+-            data.policySurpriseByTurn[turnAfterStart],
+-            data.policyEntropyByTurn[turnAfterStart],
+-            data.searchEntropyByTurn[turnAfterStart],
+             data.whiteValueTargetsByTurn,
+             turnAfterStart,
+             data.nnRawStatsByTurn[turnAfterStart],
+@@ -1010,7 +947,7 @@     Move move = data.endHist.moveHistory[turnIdx];
+     assert(move.pla == nextPlayer);
+     assert(hist.isLegal(board,move.loc,move.pla));
+-    hist.makeBoardMoveAssumeLegal(board, move.loc, move.pla, NULL);
++    hist.makeBoardMoveAssumeLegal(board, move.loc, move.pla);
+     nextPlayer = getOpp(nextPlayer);
+   }
+ 
+@@ -1037,9 +974,6 @@             sp->unreducedNumVisits,
+             &(sp->policyTarget),
+             NULL,
+-            sp->policySurprise,
+-            sp->policyEntropy,
+-            sp->searchEntropy,
+             whiteValueTargetsBuf,
+             0,
+             sp->nnRawStats,

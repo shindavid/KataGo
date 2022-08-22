@@ -1,0 +1,16 @@
+--- cpp/command/commandline.h [lightvector:master]+++ cpp/command/commandline.h [hzyhhzy:Reversi2022]@@ -12,7 +12,7 @@ class KataGoCommandLine : public TCLAP::CmdLine
+ {
+   TCLAP::ValueArg<std::string>* modelFileArg;
+-  TCLAP::MultiArg<std::string>* configFileArg;
++  TCLAP::ValueArg<std::string>* configFileArg;
+   TCLAP::MultiArg<std::string>* overrideConfigArg;
+   std::string defaultConfigFileName;
+   int numBuiltInArgs;
+@@ -44,7 +44,7 @@   void getConfigAllowEmpty(ConfigParser& cfg) const;
+ 
+  private:
+-  std::vector<std::string> getConfigFiles() const;
++  std::string getConfigFile() const;
+   void maybeApplyOverrideConfigArg(ConfigParser& cfg) const;
+ };
+ 

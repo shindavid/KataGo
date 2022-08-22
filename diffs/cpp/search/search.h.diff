@@ -1,0 +1,184 @@
+--- cpp/search/search.h [lightvector:master]+++ cpp/search/search.h [hzyhhzy:Reversi2022]@@ -91,10 +91,6 @@   std::vector<int> rootSymmetries;
+   std::vector<int> rootPruneOnlySymmetries;
+ 
+-  //Strictly pass-alive areas in the root board position
+-  Color* rootSafeArea;
+-  //Used to center for dynamic scorevalue
+-  double recentScoreCenter;
+ 
+   //If the opponent is mirroring, then the color of that opponent, for countering mirroring
+   Player mirroringPla;
+@@ -113,8 +109,6 @@ 
+   std::string randSeed;
+ 
+-  //Contains all koHashes of positions/situations up to and including the root
+-  KoHashTable* rootKoHashTable;
+ 
+   //Precomputed distribution for downweighting child values based on their values
+   DistributionTable* valueWeightDistribution;
+@@ -123,10 +117,6 @@   double normToTApproxZ;
+   std::vector<double> normToTApproxTable;
+ 
+-  //Pattern bonuses are currently only looked up for shapes completed by the player who the search is for.
+-  //Implicitly these utility adjustments "assume" the opponent likes the negative of our adjustments.
+-  PatternBonusTable* patternBonusTable;
+-  std::unique_ptr<PatternBonusTable> externalPatternBonusTable;
+ 
+   Rand nonSearchRand; //only for use not in search, since rand isn't threadsafe
+ 
+@@ -204,8 +194,6 @@   void setRootSymmetryPruningOnly(const std::vector<int>& rootPruneOnlySymmetries);
+   void setParams(SearchParams params);
+   void setParamsNoClearing(SearchParams params); //Does not clear search
+-  void setExternalPatternBonusTable(std::unique_ptr<PatternBonusTable>&& table);
+-  void setCopyOfExternalPatternBonusTable(const std::unique_ptr<PatternBonusTable>& table);
+   void setNNEval(NNEvaluator* nnEval);
+ 
+   //If the number of threads is reduced, this can free up some excess threads in the thread pool.
+@@ -220,7 +208,6 @@   //If the move is not legal for the specified player, returns false and does nothing, else returns true
+   //In the case where the player was not the expected one moving next, also clears history.
+   bool makeMove(Loc moveLoc, Player movePla);
+-  bool makeMove(Loc moveLoc, Player movePla, bool preventEncore);
+ 
+   //isLegalTolerant also specially handles players moving multiple times in a row.
+   bool isLegalTolerant(Loc moveLoc, Player movePla) const;
+@@ -308,7 +295,6 @@   //Get the surprisingness (kl-divergence) of the search result given the policy prior, as well as the entropy of each.
+   //Returns false if could not be computed.
+   bool getPolicySurpriseAndEntropy(double& surpriseRet, double& searchEntropyRet, double& policyEntropyRet) const;
+-  bool getPolicySurpriseAndEntropy(double& surpriseRet, double& searchEntropyRet, double& policyEntropyRet, const SearchNode* node) const;
+   double getPolicySurprise() const;
+ 
+   void printPV(std::ostream& out, const SearchNode* node, int maxDepth) const;
+@@ -316,7 +302,6 @@   void printTree(std::ostream& out, const SearchNode* node, PrintTreeOptions options, Player perspective) const;
+   void printRootPolicyMap(std::ostream& out) const;
+   void printRootOwnershipMap(std::ostream& out, Player perspective) const;
+-  void printRootEndingScoreValueBonus(std::ostream& out) const;
+ 
+   //Get detailed analysis data, designed for lz-analyze and kata-analyze commands.
+   void getAnalysisData(
+@@ -326,56 +311,32 @@     const SearchNode& node, std::vector<AnalysisData>& buf, int minMovesToTryToGet, bool includeWeightFactors, int maxPVDepth, bool duplicateForSymmetries
+   ) const;
+ 
+-  //Append the PV from node n onward (not including the move if any that reached node n)
+-  void appendPV(
+-    std::vector<Loc>& buf,
+-    std::vector<int64_t>& visitsBuf,
+-    std::vector<int64_t>& edgeVisitsBuf,
+-    std::vector<Loc>& scratchLocs,
+-    std::vector<double>& scratchValues,
+-    const SearchNode* n,
+-    int maxDepth
+-  ) const;
++  //Append the PV from node n onward (not including node n's move)
++  void appendPV(std::vector<Loc>& buf, std::vector<int64_t>& visitsBuf, std::vector<Loc>& scratchLocs, std::vector<double>& scratchValues, const SearchNode* n, int maxDepth) const;
+   //Append the PV from node n for specified move, assuming move is a child move of node n
+-  void appendPVForMove(
+-    std::vector<Loc>& buf,
+-    std::vector<int64_t>& visitsBuf,
+-    std::vector<int64_t>& edgeVisitsBuf,
+-    std::vector<Loc>& scratchLocs,
+-    std::vector<double>& scratchValues,
+-    const SearchNode* n,
+-    Loc move,
+-    int maxDepth
+-  ) const;
++  void appendPVForMove(std::vector<Loc>& buf, std::vector<int64_t>& visitsBuf, std::vector<Loc>& scratchLocs, std::vector<double>& scratchValues, const SearchNode* n, Loc move, int maxDepth) const;
+ 
+   //Get the ownership map averaged throughout the search tree.
+   //Must have ownership present on all neural net evals.
+   //Safe to call DURING search, but NOT necessarily safe to call multithreadedly when updating the root position
+   //or changing parameters or clearing search.
+-  //If node is not provided, defaults to using the root node.
+-  std::vector<double> getAverageTreeOwnership(const SearchNode* node = NULL) const;
+-  std::pair<std::vector<double>,std::vector<double>> getAverageAndStandardDeviationTreeOwnership(const SearchNode* node = NULL) const;
+-
+-  //Same, but applies symmetry and perspective
+-  std::vector<double> getAverageTreeOwnership(
+-    const Player perspective,
+-    const SearchNode* node,
+-    int symmetry
+- ) const;
+-  std::pair<std::vector<double>,std::vector<double>> getAverageAndStandardDeviationTreeOwnership(
+-    const Player perspective,
+-    const SearchNode* node,
+-    int symmetry
+-  ) const;
+-
++  //If node is not providied, defaults to using the root node.
++  std::vector<double> getAverageTreeOwnership(double minWeight, const SearchNode* node = NULL) const;
++  std::tuple<std::vector<double>,std::vector<double>> getAverageAndStandardDeviationTreeOwnership(double minWeight, const SearchNode* node = NULL) const;
+ 
+   std::pair<double,double> getAverageShorttermWLAndScoreError(const SearchNode* node = NULL) const;
+-  bool getSharpScore(const SearchNode* node, double& ret) const;
+-
++
++  //Get ownership map as json
++  nlohmann::json getJsonOwnershipMap(
++    const Player pla, const Player perspective, const Board& board, const SearchNode* node, double ownershipMinWeight, int symmetry
++  ) const;
++  std::pair<nlohmann::json,nlohmann::json> getJsonOwnershipAndStdevMap(
++    const Player pla, const Player perspective, const Board& board, const SearchNode* node, double ownershipMinWeight, int symmetry
++  ) const;
+   //Fill json with analysis engine format information about search results
+   bool getAnalysisJson(
+     const Player perspective,
+-    int analysisPVLen, bool preventEncore, bool includePolicy,
++    int analysisPVLen, double ownershipMinWeight, bool includePolicy,
+     bool includeOwnership, bool includeOwnershipStdev, bool includeMovesOwnership, bool includeMovesOwnershipStdev, bool includePVVisits,
+     nlohmann::json& ret
+   ) const;
+@@ -416,10 +377,7 @@   // Miscellaneous search biasing helpers, root move selection, etc.
+   // searchhelpers.cpp
+   //----------------------------------------------------------------------------------------
+-  bool isAllowedRootMove(Loc moveLoc) const;
+-  double getPatternBonus(Hash128 patternBonusHash, Player prevMovePla) const;
+-  double getEndingWhiteScoreBonus(const SearchNode& parent, Loc moveLoc) const;
+-  bool shouldSuppressPass(const SearchNode* n) const;
++
+ 
+   double interpolateEarly(double halflife, double earlyValue, double value) const;
+ 
+@@ -629,33 +587,24 @@     std::string& prefix, int64_t origVisits, int depth, const AnalysisData& data, Player perspective
+   ) const;
+ 
+-  double getSharpScoreHelper(
++
++  std::pair<double,double> getAverageShorttermWLAndScoreErrorHelper(const SearchNode* node) const;
++
++  template<typename Func>
++  double traverseTreeWithOwnershipAndSelfWeight(
++    double minWeight,
++    double desiredWeight,
+     const SearchNode* node,
+-    std::unordered_set<const SearchNode*>& graphPath,
+-    double policyProbsBuf[NNPos::MAX_NN_POLICY_SIZE]
+-  ) const;
+-
+-  std::pair<double,double> getAverageShorttermWLAndScoreErrorHelper(const SearchNode* node) const;
+-
++    Func& averaging
++  ) const;
+   template<typename Func>
+-  bool traverseTreeForOwnership(
+-    double minProp,
+-    double pruneProp,
+-    double desiredProp,
+-    const SearchNode* node,
+-    std::unordered_set<const SearchNode*>& graphPath,
+-    Func& averaging
+-  ) const;
+-  template<typename Func>
+-  double traverseTreeForOwnershipChildren(
+-    double minProp,
+-    double pruneProp,
+-    double desiredProp,
++  double traverseTreeWithOwnershipAndSelfWeightHelper(
++    double minWeight,
++    double desiredWeight,
+     double thisNodeWeight,
+     const SearchChildPointer* children,
+     double* childWeightBuf,
+     int childrenCapacity,
+-    std::unordered_set<const SearchNode*>& graphPath,
+     Func& averaging
+   ) const;
+ 

@@ -1,0 +1,8 @@
+--- cpp/core/rand.h [lightvector:master]+++ cpp/core/rand.h [hzyhhzy:Reversi2022]@@ -209,7 +209,7 @@ {
+   assert(n > 0);
+   assert(n < 0xFFFFFFFF);
+-  double sum = 0;
++  double_t sum = 0;
+   for(uint32_t i = 0; i<n; i++)
+   {
+     assert(relProbs[i] >= 0);

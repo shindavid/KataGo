@@ -1,0 +1,179 @@
+--- cpp/command/gatekeeper.cpp [lightvector:master]+++ cpp/command/gatekeeper.cpp [hzyhhzy:Reversi2022]@@ -47,7 +47,6 @@     NNEvaluator* nnEvalCandidate;
+     MatchPairer* matchPairer;
+ 
+-    string testModelFile;
+     string testModelDir;
+ 
+     ThreadSafeQueue<FinishedGameData*> finishedGameQueue;
+@@ -66,22 +65,12 @@     std::atomic<bool> terminated;
+ 
+   public:
+-    NetAndStuff(
+-      ConfigParser& cfg,
+-      const string& nameB,
+-      const string& nameC,
+-      const string& tModelFile,
+-      const string& tModelDir,
+-      NNEvaluator* nevalB,
+-      NNEvaluator* nevalC,
+-      ofstream* sOut
+-    )
++    NetAndStuff(ConfigParser& cfg, const string& nameB, const string& nameC, const string& tModelDir, NNEvaluator* nevalB, NNEvaluator* nevalC, ofstream* sOut)
+       :modelNameBaseline(nameB),
+        modelNameCandidate(nameC),
+        nnEvalBaseline(nevalB),
+        nnEvalCandidate(nevalC),
+        matchPairer(NULL),
+-       testModelFile(tModelFile),
+        testModelDir(tModelDir),
+        finishedGameQueue(),
+        numGameThreads(0),
+@@ -132,10 +121,9 @@         }
+         else {
+           BoardHistory hist(data->endHist);
+-          Board endBoard = hist.getRecentBoard(0);
+           //Force game end just in caseif we crossed a move limit
+           if(!hist.isGameFinished)
+-            hist.endAndScoreGameNow(endBoard);
++            hist.setWinner(C_EMPTY);
+ 
+           ostringstream oresult;
+           WriteSgf::printGameResult(oresult,hist);
+@@ -212,31 +200,13 @@   };
+ }
+ 
+-static void moveModel(const string& modelName, const string& modelFile, const string& modelDir, const string& testModelsDir, const string& intoDir, Logger& logger) {
+-  // Was the rejected model rooted in the testModels dir itself?
+-  if(FileUtils::weaklyCanonical(modelDir) == FileUtils::weaklyCanonical(testModelsDir)) {
+-    string renameDest = intoDir + "/" + modelName;
+-    logger.write("Moving " + modelFile + " to " + renameDest);
+-    FileUtils::rename(modelFile,renameDest);
+-  }
+-  // Or was it contained in a subdirectory
+-  else if(Global::isPrefix(FileUtils::weaklyCanonical(modelDir), FileUtils::weaklyCanonical(testModelsDir))) {
+-    string renameDest = intoDir + "/" + modelName;
+-    logger.write("Moving " + modelDir + " to " + renameDest);
+-    FileUtils::rename(modelDir,renameDest);
+-  }
+-  else {
+-    throw StringError("Model " + modelDir + " does not appear to be a subdir of " + testModelsDir + " can't figure out where how to move it to accept or reject it");
+-  }
+-}
+-
+ 
+ //-----------------------------------------------------------------------------------------
+ 
+ 
+ int MainCmds::gatekeeper(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
++   
+   Rand seedRand;
+ 
+   ConfigParser cfg;
+@@ -302,9 +272,11 @@   if(selfplayDir != "")
+     MakeDir::make(selfplayDir);
+ 
+-  Logger logger(&cfg);
++  Logger logger;
+   //Log to random file name to better support starting/stopping as well as multiple parallel runs
+   logger.addFile(sgfOutputDir + "/log" + DateTime::getCompactDateTimeString() + "-" + Global::uint64ToHexString(seedRand.nextUInt64()) + ".log");
++  bool logToStdout = cfg.getBool("logToStdout");
++  logger.setLogToStdout(logToStdout);
+ 
+   logger.write("Gatekeeper Engine starting...");
+   logger.write(string("Git revision: ") + Version::getGitRevision());
+@@ -325,7 +297,7 @@   //Done loading!
+   //------------------------------------------------------------------------------------
+   logger.write("Loaded all config stuff, watching for new neural nets in " + testModelsDir);
+-  if(!logger.isLoggingToStdout())
++  if(!logToStdout)
+     cout << "Loaded all config stuff, watching for new neural nets in " + testModelsDir << endl;
+ 
+   if(!std::atomic_is_lock_free(&shouldStop))
+@@ -385,8 +357,10 @@     }
+ 
+     if(acceptedModelTime > testModelTime && !noAutoRejectOldModels) {
+-      logger.write("Rejecting " + testModelName + " automatically since older than best accepted model");
+-      moveModel(testModelName, testModelFile, testModelDir, testModelsDir, rejectedModelsDir, logger);
++      string renameDest = rejectedModelsDir + "/" + testModelName;
++      logger.write("Rejecting " + testModelDir + " automatically since older than best accepted model");
++      logger.write("Moving " + testModelDir + " to " + renameDest);
++      FileUtils::rename(testModelDir,renameDest);
+       return NULL;
+     }
+ 
+@@ -425,16 +399,7 @@       sgfOut = new ofstream();
+       FileUtils::open(*sgfOut, sgfOutputDirThisModel + "/" + Global::uint64ToHexString(rand.nextUInt64()) + ".sgfs");
+     }
+-    NetAndStuff* newNet = new NetAndStuff(
+-      cfg,
+-      acceptedModelName,
+-      testModelName,
+-      testModelFile,
+-      testModelDir,
+-      acceptedNNEval,
+-      testNNEval,
+-      sgfOut
+-    );
++    NetAndStuff* newNet = new NetAndStuff(cfg, acceptedModelName, testModelName, testModelDir, acceptedNNEval, testNNEval, sgfOut);
+ 
+     //Check for unused config keys
+     cfg.warnUnusedKeys(cerr,&logger);
+@@ -456,7 +421,6 @@     auto shouldStopFunc = [&netAndStuff]() {
+       return shouldStop.load() || netAndStuff->terminated.load();
+     };
+-    WaitableFlag* shouldPause = nullptr;
+ 
+     Rand thisLoopSeedRand;
+     while(true) {
+@@ -473,7 +437,7 @@         string seed = gameSeedBase + ":" + Global::uint64ToHexString(thisLoopSeedRand.nextUInt64());
+         gameData = gameRunner->runGame(
+           seed, botSpecB, botSpecW, NULL, NULL, logger,
+-          shouldStopFunc, shouldPause, nullptr, nullptr, nullptr
++          shouldStopFunc, nullptr, nullptr, nullptr
+         );
+       }
+ 
+@@ -571,14 +535,9 @@         )
+       );
+ 
+-      moveModel(
+-        netAndStuff->modelNameCandidate,
+-        netAndStuff->testModelFile,
+-        netAndStuff->testModelDir,
+-        testModelsDir,
+-        rejectedModelsDir,
+-        logger
+-      );
++      string renameDest = rejectedModelsDir + "/" + netAndStuff->modelNameCandidate;
++      logger.write("Moving " + netAndStuff->testModelDir + " to " + renameDest);
++      FileUtils::rename(netAndStuff->testModelDir,renameDest);
+     }
+     else {
+       logger.write(
+@@ -603,14 +562,9 @@       }
+       std::this_thread::sleep_for(std::chrono::seconds(2));
+ 
+-      moveModel(
+-        netAndStuff->modelNameCandidate,
+-        netAndStuff->testModelFile,
+-        netAndStuff->testModelDir,
+-        testModelsDir,
+-        acceptedModelsDir,
+-        logger
+-      );
++      string renameDest = acceptedModelsDir + "/" + netAndStuff->modelNameCandidate;
++      logger.write("Moving " + netAndStuff->testModelDir + " to " + renameDest);
++      FileUtils::rename(netAndStuff->testModelDir,renameDest);
+     }
+ 
+     //Clean up
+@@ -623,7 +577,7 @@   //Delete and clean up everything else
+   NeuralNet::globalCleanup();
+   delete gameRunner;
+-  ScoreValue::freeTables();
++   
+ 
+   if(sigReceived.load())
+     logger.write("Exited cleanly after signal");

@@ -1,0 +1,340 @@
+--- cpp/search/search.cpp [lightvector:master]+++ cpp/search/search.cpp [hzyhhzy:Reversi2022]@@ -12,7 +12,6 @@ #include "../core/timer.h"
+ #include "../game/graphhash.h"
+ #include "../search/distributiontable.h"
+-#include "../search/patternbonustable.h"
+ #include "../search/searchnode.h"
+ #include "../search/searchnodetable.h"
+ #include "../search/subtreevaluebiastable.h"
+@@ -73,8 +72,6 @@    avoidMoveUntilByLocBlack(),avoidMoveUntilByLocWhite(),
+    rootSymmetries(),
+    rootPruneOnlySymmetries(),
+-   rootSafeArea(NULL),
+-   recentScoreCenter(0.0),
+    mirroringPla(C_EMPTY),
+    mirrorAdvantage(0.0),
+    mirrorCenterSymmetryError(1e10),
+@@ -84,12 +81,9 @@    lastSearchNumPlayouts(0),
+    effectiveSearchTimeCarriedOver(0.0),
+    randSeed(rSeed),
+-   rootKoHashTable(NULL),
+    valueWeightDistribution(NULL),
+    normToTApproxZ(0.0),
+    normToTApproxTable(),
+-   patternBonusTable(NULL),
+-   externalPatternBonusTable(nullptr),
+    nonSearchRand(rSeed + string("$nonSearchRand")),
+    logger(lg),
+    nnEvaluator(nnEval),
+@@ -113,9 +107,7 @@   assert(nnXLen > 0 && nnXLen <= NNPos::MAX_BOARD_LEN);
+   assert(nnYLen > 0 && nnYLen <= NNPos::MAX_BOARD_LEN);
+   policySize = NNPos::getPolicySize(nnXLen,nnYLen);
+-  rootKoHashTable = new KoHashTable();
+-
+-  rootSafeArea = new Color[Board::MAX_ARR_SIZE];
++
+ 
+   valueWeightDistribution = new DistributionTable(
+     [](double z) { return FancyMath::tdistpdf(z,VALUE_WEIGHT_DEGREES_OF_FREEDOM); },
+@@ -129,21 +121,17 @@   nodeTable = new SearchNodeTable(params.nodeTableShardsPowerOfTwo);
+   mutexPool = new MutexPool(nodeTable->mutexPool->getNumMutexes());
+ 
+-  rootHistory.clear(rootBoard,rootPla,Rules(),0);
+-  rootKoHashTable->recompute(rootHistory);
++  rootHistory.clear(rootBoard,rootPla,Rules());
+ }
+ 
+ Search::~Search() {
+   clearSearch();
+ 
+-  delete[] rootSafeArea;
+-  delete rootKoHashTable;
+   delete valueWeightDistribution;
+ 
+   delete nodeTable;
+   delete mutexPool;
+   delete subtreeValueBiasTable;
+-  delete patternBonusTable;
+   killThreads();
+ }
+ 
+@@ -171,7 +159,6 @@   plaThatSearchIsFor = C_EMPTY;
+   rootBoard = board;
+   rootHistory = history;
+-  rootKoHashTable->recompute(rootHistory);
+   avoidMoveUntilByLocBlack.clear();
+   avoidMoveUntilByLocWhite.clear();
+ }
+@@ -180,20 +167,12 @@   clearSearch();
+   rootPla = pla;
+   plaThatSearchIsFor = C_EMPTY;
+-  rootBoard.clearSimpleKoLoc();
+   Rules rules = rootHistory.rules;
+   //Preserve this value even when we get multiple moves in a row by some player
+-  bool assumeMultipleStartingBlackMovesAreHandicap = rootHistory.assumeMultipleStartingBlackMovesAreHandicap;
+-  rootHistory.clear(rootBoard,rootPla,rules,rootHistory.encorePhase);
+-  rootHistory.setAssumeMultipleStartingBlackMovesAreHandicap(assumeMultipleStartingBlackMovesAreHandicap);
+-
+-  rootKoHashTable->recompute(rootHistory);
+-
+-  //If changing the player alone, don't clear these, leave the user's setting - the user may have tried
+-  //to adjust the player or will be calling runWholeSearchAndGetMove with a different player and will
+-  //still want avoid moves to apply.
+-  //avoidMoveUntilByLocBlack.clear();
+-  //avoidMoveUntilByLocWhite.clear();
++  rootHistory.clear(rootBoard,rootPla,rules);
++
++  avoidMoveUntilByLocBlack.clear();
++  avoidMoveUntilByLocWhite.clear();
+ }
+ 
+ void Search::setPlayerIfNew(Player pla) {
+@@ -245,19 +224,6 @@ 
+ void Search::setParamsNoClearing(SearchParams params) {
+   searchParams = params;
+-}
+-
+-void Search::setExternalPatternBonusTable(std::unique_ptr<PatternBonusTable>&& table) {
+-  if(table == externalPatternBonusTable)
+-    return;
+-  //Probably not actually needed so long as we do a fresh search to refresh and use the new table
+-  //but this makes behavior consistent with all the other setters.
+-  clearSearch();
+-  externalPatternBonusTable = std::move(table);
+-}
+-
+-void Search::setCopyOfExternalPatternBonusTable(const std::unique_ptr<PatternBonusTable>& table) {
+-  setExternalPatternBonusTable(table == nullptr ? nullptr : std::make_unique<PatternBonusTable>(*table));
+ }
+ 
+ void Search::setNNEval(NNEvaluator* nnEval) {
+@@ -292,7 +258,6 @@   //clear the ko loc - the simple ko loc of a player should not prohibit the opponent playing there!
+   if(movePla != rootPla) {
+     Board copy = rootBoard;
+-    copy.clearSimpleKoLoc();
+     return copy.isLegal(moveLoc,movePla,multiStoneSuicideLegal);
+   }
+   else {
+@@ -304,11 +269,8 @@   return movePla == rootPla && rootHistory.isLegal(rootBoard,moveLoc,movePla);
+ }
+ 
++
+ bool Search::makeMove(Loc moveLoc, Player movePla) {
+-  return makeMove(moveLoc,movePla,false);
+-}
+-
+-bool Search::makeMove(Loc moveLoc, Player movePla, bool preventEncore) {
+   if(!isLegalTolerant(moveLoc,movePla))
+     return false;
+ 
+@@ -373,32 +335,15 @@     }
+   }
+ 
+-  //If the white handicap bonus changes due to the move, we will also need to recompute everything since this is
+-  //basically like a change to the komi.
+-  float oldWhiteHandicapBonusScore = rootHistory.whiteHandicapBonusScore;
+-
+-  rootHistory.makeBoardMoveAssumeLegal(rootBoard,moveLoc,rootPla,rootKoHashTable,preventEncore);
++
++  rootHistory.makeBoardMoveAssumeLegal(rootBoard,moveLoc,rootPla);
+   rootPla = getOpp(rootPla);
+-  rootKoHashTable->recompute(rootHistory);
+ 
+   //Explicitly clear avoid move arrays when we play a move - user needs to respecify them if they want them.
+   avoidMoveUntilByLocBlack.clear();
+   avoidMoveUntilByLocWhite.clear();
+ 
+-  //If we're newly inferring some moves as handicap that we weren't before, clear since score will be wrong.
+-  if(rootHistory.whiteHandicapBonusScore != oldWhiteHandicapBonusScore)
+-    clearSearch();
+-
+-  //In the case that we are conservativePass and a pass would end the game, need to clear the search.
+-  //This is because deeper in the tree, such a node would have been explored as ending the game, but now that
+-  //it's a root pass, it needs to be treated as if it no longer ends the game.
+-  if(searchParams.conservativePass && rootHistory.passWouldEndGame(rootBoard,rootPla))
+-    clearSearch();
+-
+-  //In the case that we're preventing encore, and the phase would have ended, we also need to clear the search
+-  //since the search was conducted on the assumption that we're going into encore now.
+-  if(preventEncore && rootHistory.passWouldEndPhase(rootBoard,rootPla))
+-    clearSearch();
++
+ 
+   return true;
+ }
+@@ -458,17 +403,9 @@   //Compute caps on search
+   int64_t maxVisits = pondering ? searchParams.maxVisitsPondering : searchParams.maxVisits;
+   int64_t maxPlayouts = pondering ? searchParams.maxPlayoutsPondering : searchParams.maxPlayouts;
+-  double maxTime = pondering ? searchParams.maxTimePondering : searchParams.maxTime;
++  double_t maxTime = pondering ? searchParams.maxTimePondering : searchParams.maxTime;
+ 
+   {
+-    //Possibly reduce computation time, for human friendliness
+-    if(rootHistory.moveHistory.size() >= 1 && rootHistory.moveHistory[rootHistory.moveHistory.size()-1].loc == Board::PASS_LOC) {
+-      if(rootHistory.moveHistory.size() >= 3 && rootHistory.moveHistory[rootHistory.moveHistory.size()-3].loc == Board::PASS_LOC)
+-        searchFactor *= searchParams.searchFactorAfterTwoPass;
+-      else
+-        searchFactor *= searchParams.searchFactorAfterOnePass;
+-    }
+-
+     if(searchFactor != 1.0) {
+       double cap = (double)((int64_t)1L << 62);
+       maxVisits = (int64_t)ceil(std::min(cap, maxVisits * searchFactor));
+@@ -603,11 +540,6 @@     //and the player that the search is for changes, we need to clear the tree since we need new evals for the new way around
+     if(searchParams.playoutDoublingAdvantage != 0 && searchParams.playoutDoublingAdvantagePla == C_EMPTY)
+       clearSearch();
+-    //If we are doing pattern bonus and the player the search is for changes, clear the search. Recomputing the search tree
+-    //recursively *would* fix all our utilities, but the problem is the playout distribution will still be matching the
+-    //old probabilities without a lot of new search, so clearing ensures a better distribution.
+-    if(searchParams.avoidRepeatedPatternUtility != 0 || externalPatternBonusTable != nullptr)
+-      clearSearch();
+   }
+   plaThatSearchIsForLastSearch = plaThatSearchIsFor;
+   //cout << "BEGINSEARCH " << PlayerIO::playerToString(rootPla) << " " << PlayerIO::playerToString(plaThatSearchIsFor) << endl;
+@@ -620,24 +552,6 @@   if(searchParams.subtreeValueBiasFactor != 0 && subtreeValueBiasTable == NULL && !(searchParams.antiMirror && mirroringPla != C_EMPTY))
+     subtreeValueBiasTable = new SubtreeValueBiasTable(searchParams.subtreeValueBiasTableNumShards);
+ 
+-  //Refresh pattern bonuses if needed
+-  if(patternBonusTable != NULL) {
+-    delete patternBonusTable;
+-    patternBonusTable = NULL;
+-  }
+-  if(searchParams.avoidRepeatedPatternUtility != 0 || externalPatternBonusTable != nullptr) {
+-    if(externalPatternBonusTable != nullptr)
+-      patternBonusTable = new PatternBonusTable(*externalPatternBonusTable);
+-    else
+-      patternBonusTable = new PatternBonusTable();
+-    if(searchParams.avoidRepeatedPatternUtility != 0) {
+-      double bonus = plaThatSearchIsFor == P_WHITE ? -searchParams.avoidRepeatedPatternUtility : searchParams.avoidRepeatedPatternUtility;
+-      patternBonusTable->addBonusForGameMoves(rootHistory,bonus,plaThatSearchIsFor);
+-    }
+-    //Clear any pattern bonus on the root node itself
+-    if(rootNode != NULL)
+-      rootNode->patternBonusHash = Hash128();
+-  }
+ 
+   if(searchParams.rootSymmetryPruning) {
+     const std::vector<int>& avoidMoveUntilByLoc = rootPla == P_BLACK ? avoidMoveUntilByLocBlack : avoidMoveUntilByLocWhite;
+@@ -688,7 +602,7 @@           children[i].setMoveLoc(Board::NULL_LOC);
+           //Maybe add it back. Specifically check for legality just in case weird graph interaction in the
+           //tree gives wrong legality - ensure that once we are the root, we are strict on legality.
+-          if(rootHistory.isLegal(rootBoard,moveLoc,rootPla) && isAllowedRootMove(moveLoc)) {
++          if(rootHistory.isLegal(rootBoard,moveLoc,rootPla)) {
+             children[numGoodChildren].store(child);
+             children[numGoodChildren].setEdgeVisits(edgeVisits);
+             children[numGoodChildren].setMoveLoc(moveLoc);
+@@ -751,7 +665,7 @@ 
+     //Recursively update all stats in the tree if we have dynamic score values
+     //And also to clear out lastResponseBiasDeltaSum and lastResponseBiasWeight
+-    if(searchParams.dynamicScoreUtilityFactor != 0 || searchParams.subtreeValueBiasFactor != 0 || patternBonusTable != NULL) {
++    if(searchParams.dynamicScoreUtilityFactor != 0 || searchParams.subtreeValueBiasFactor != 0) {
+       recursivelyRecomputeStats(node);
+       if(anyFiltered) {
+         //Recursive stats recomputation resulted in us marking all nodes we have. Anything filtered is old now, delete it.
+@@ -833,8 +747,6 @@         }
+       }
+ 
+-      if(patternBonusTable != NULL)
+-        child->patternBonusHash = patternBonusTable->getHash(getOpp(thread.pla), bestChildMoveLoc, thread.history.getRecentBoard(1));
+ 
+       //Insert into map! Use insertLoc as hint.
+       nodeMap.insert(insertLoc, std::make_pair(childHash,child));
+@@ -979,7 +891,6 @@         double resultUtility = getResultUtility(winLossValueAvg, noResultValueAvg);
+         double scoreUtility = getScoreUtility(scoreMeanAvg, scoreMeanSqAvg);
+         double newUtilityAvg = resultUtility + scoreUtility;
+-        newUtilityAvg += getPatternBonus(node->patternBonusHash,getOpp(node->nextPla));
+         double newUtilitySqAvg = newUtilityAvg * newUtilityAvg;
+ 
+         while(node->statsLock.test_and_set(std::memory_order_acquire));
+@@ -1004,49 +915,6 @@ 
+ 
+ void Search::computeRootValues() {
+-  //rootSafeArea is strictly pass-alive groups and strictly safe territory.
+-  bool nonPassAliveStones = false;
+-  bool safeBigTerritories = false;
+-  bool unsafeBigTerritories = false;
+-  bool isMultiStoneSuicideLegal = rootHistory.rules.multiStoneSuicideLegal;
+-  rootBoard.calculateArea(
+-    rootSafeArea,
+-    nonPassAliveStones,
+-    safeBigTerritories,
+-    unsafeBigTerritories,
+-    isMultiStoneSuicideLegal
+-  );
+-
+-  //Figure out how to set recentScoreCenter
+-  {
+-    bool foundExpectedScoreFromTree = false;
+-    double expectedScore = 0.0;
+-    if(rootNode != NULL) {
+-      const SearchNode& node = *rootNode;
+-      int64_t numVisits = node.stats.visits.load(std::memory_order_acquire);
+-      double weightSum = node.stats.weightSum.load(std::memory_order_acquire);
+-      double scoreMeanAvg = node.stats.scoreMeanAvg.load(std::memory_order_acquire);
+-      if(numVisits > 0 && weightSum > 0) {
+-        foundExpectedScoreFromTree = true;
+-        expectedScore = scoreMeanAvg;
+-      }
+-    }
+-
+-    //Grab a neural net evaluation for the current position and use that as the center
+-    if(!foundExpectedScoreFromTree) {
+-      NNResultBuf nnResultBuf;
+-      bool includeOwnerMap = true;
+-      computeRootNNEvaluation(nnResultBuf,includeOwnerMap);
+-      expectedScore = nnResultBuf.result->whiteScoreMean;
+-    }
+-
+-    recentScoreCenter = expectedScore * (1.0 - searchParams.dynamicScoreCenterZeroWeight);
+-    double cap =  sqrt(rootBoard.x_size * rootBoard.y_size) * searchParams.dynamicScoreCenterScale;
+-    if(recentScoreCenter > expectedScore + cap)
+-      recentScoreCenter = expectedScore + cap;
+-    if(recentScoreCenter < expectedScore - cap)
+-      recentScoreCenter = expectedScore - cap;
+-  }
+ 
+   //If we're using graph search, we recompute the graph hash from scratch at the start of search.
+   if(searchParams.useGraphSearch)
+@@ -1112,8 +980,8 @@     else {
+       double winLossValue = 2.0 * ScoreValue::whiteWinsOfWinner(thread.history.winner, searchParams.drawEquivalentWinsForWhite) - 1;
+       double noResultValue = 0.0;
+-      double scoreMean = ScoreValue::whiteScoreDrawAdjust(thread.history.finalWhiteMinusBlackScore,searchParams.drawEquivalentWinsForWhite,thread.history);
+-      double scoreMeanSq = ScoreValue::whiteScoreMeanSqOfScoreGridded(thread.history.finalWhiteMinusBlackScore,searchParams.drawEquivalentWinsForWhite);
++      double scoreMean = thread.history.finalWhiteMinusBlackScore;
++      double scoreMeanSq = thread.history.finalWhiteMinusBlackScore*thread.history.finalWhiteMinusBlackScore;
+       double lead = scoreMean;
+       double weight = (searchParams.useUncertainty && nnEvaluator->supportsShorttermError()) ? searchParams.uncertaintyMaxWeight : 1.0;
+       addLeafValue(node, winLossValue, noResultValue, scoreMean, scoreMeanSq, lead, weight, true, false);
+@@ -1168,9 +1036,9 @@     //Could also be true if we have an illegal move due to graph search and we had a cycle and superko interaction, or a true collision
+     //on an older path that results in bad transposition between positions that don't transpose.
+     if(bestChildIdx >= 0 && !thread.history.isLegal(thread.board,bestChildMoveLoc,thread.pla)) {
++      Board::printBoard(std::cout, thread.board, bestChildMoveLoc, NULL);
+       bool isReInit = true;
+       initNodeNNOutput(thread,node,isRoot,true,isReInit);
+-
+       {
+         NNOutput* nnOutput = node.getNNOutput();
+         assert(nnOutput != NULL);
+@@ -1232,7 +1100,7 @@       assert(childrenCapacity > bestChildIdx);
+ 
+       //Make the move! We need to make the move before we create the node so we can see the new state and get the right graphHash.
+-      thread.history.makeBoardMoveAssumeLegal(thread.board,bestChildMoveLoc,thread.pla,rootKoHashTable);
++      thread.history.makeBoardMoveAssumeLegal(thread.board,bestChildMoveLoc,thread.pla);
+       thread.pla = getOpp(thread.pla);
+       if(searchParams.useGraphSearch)
+         thread.graphHash = GraphHash::getGraphHash(
+@@ -1240,7 +1108,7 @@         );
+ 
+       //If conservative pass, passing from the root is always non-terminal
+-      const bool forceNonTerminal = searchParams.conservativePass && (&node == rootNode) && bestChildMoveLoc == Board::PASS_LOC;
++      const bool forceNonTerminal = false;
+       child = allocateOrFindNode(thread, thread.pla, bestChildMoveLoc, forceNonTerminal, thread.graphHash);
+       child->virtualLosses.fetch_add(1,std::memory_order_release);
+ 
+@@ -1289,7 +1157,7 @@       }
+ 
+       //Make the move!
+-      thread.history.makeBoardMoveAssumeLegal(thread.board,bestChildMoveLoc,thread.pla,rootKoHashTable);
++      thread.history.makeBoardMoveAssumeLegal(thread.board,bestChildMoveLoc,thread.pla);
+       thread.pla = getOpp(thread.pla);
+       if(searchParams.useGraphSearch)
+         thread.graphHash = GraphHash::getGraphHash(

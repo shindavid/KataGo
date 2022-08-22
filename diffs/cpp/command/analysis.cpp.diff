@@ -1,0 +1,202 @@
+--- cpp/command/analysis.cpp [lightvector:master]+++ cpp/command/analysis.cpp [hzyhhzy:Reversi2022]@@ -4,7 +4,6 @@ #include "../core/datetime.h"
+ #include "../core/makedir.h"
+ #include "../search/asyncbot.h"
+-#include "../search/patternbonustable.h"
+ #include "../program/setup.h"
+ #include "../program/playutils.h"
+ #include "../program/play.h"
+@@ -38,7 +37,6 @@ 
+   bool reportDuringSearch;
+   double reportDuringSearchEvery;
+-  double firstReportDuringSearchAfter;
+ 
+   vector<int> avoidMoveUntilByLocBlack;
+   vector<int> avoidMoveUntilByLocWhite;
+@@ -57,7 +55,7 @@ 
+ int MainCmds::analysis(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
++   
+   Rand seedRand;
+ 
+   ConfigParser cfg;
+@@ -104,10 +102,22 @@   if(forDeterministicTesting)
+     seedRand.init("forDeterministicTesting");
+ 
+-  const bool logToStdoutDefault = false;
+-  const bool logToStderrDefault = true;
+-  Logger logger(&cfg, logToStdoutDefault, logToStderrDefault);
+-  const bool logToStderr = logger.isLoggingToStderr();
++  Logger logger;
++  if(cfg.contains("logFile") && cfg.contains("logDir"))
++    throw StringError("Cannot specify both logFile and logDir in config");
++  else if(cfg.contains("logFile"))
++    logger.addFile(cfg.getString("logFile"));
++  else if(cfg.contains("logDir")) {
++    MakeDir::make(cfg.getString("logDir"));
++    logger.addFile(cfg.getString("logDir") + "/" + DateTime::getCompactDateTimeString() + "-" + Global::uint32ToHexString(seedRand.nextUInt()) + ".log");
++  }
++
++  const bool logToStderr = cfg.contains("logToStderr") ? cfg.getBool("logToStderr") : true;
++  if(logToStderr)
++    logger.setLogToStderr(true);
++  const bool logTimeStamp = cfg.contains("logTimeStamp") ? cfg.getBool("logTimeStamp") : true;
++  if(!logTimeStamp)
++    logger.setLogTime(false);
+ 
+   logger.write("Analysis Engine starting...");
+   logger.write(Version::getKataGoVersionForHelp());
+@@ -122,26 +132,14 @@   auto loadParams = [](ConfigParser& config, SearchParams& params, Player& perspective, Player defaultPerspective) {
+     params = Setup::loadSingleParams(config,Setup::SETUP_FOR_ANALYSIS);
+     perspective = Setup::parseReportAnalysisWinrates(config,defaultPerspective);
+-    //Set a default for conservativePass that differs from matches or selfplay
+-    if(!config.contains("conservativePass") && !config.contains("conservativePass0"))
+-      params.conservativePass = true;
+   };
+ 
+   SearchParams defaultParams;
+   Player defaultPerspective;
+   loadParams(cfg, defaultParams, defaultPerspective, C_EMPTY);
+ 
+-  std::unique_ptr<PatternBonusTable> patternBonusTable = nullptr;
+-  {
+-    std::vector<std::unique_ptr<PatternBonusTable>> tables = Setup::loadAvoidSgfPatternBonusTables(cfg,logger);
+-    assert(tables.size() == 1);
+-    patternBonusTable = std::move(tables[0]);
+-  }
+ 
+   const int analysisPVLen = cfg.contains("analysisPVLen") ? cfg.getInt("analysisPVLen",1,100) : 15;
+-  const bool assumeMultipleStartingBlackMovesAreHandicap =
+-    cfg.contains("assumeMultipleStartingBlackMovesAreHandicap") ? cfg.getBool("assumeMultipleStartingBlackMovesAreHandicap") : true;
+-  const bool preventEncore = cfg.contains("preventCleanupPhase") ? cfg.getBool("preventCleanupPhase") : true;
+ 
+   NNEvaluator* nnEval;
+   {
+@@ -242,7 +240,8 @@   };
+ 
+   //Returns false if no analysis was reportable due to there being no root node or search results.
+-  auto reportAnalysis = [&preventEncore,&pushToWrite](const AnalyzeRequest* request, const Search* search, bool isDuringSearch) {
++  auto reportAnalysis = [&pushToWrite](const AnalyzeRequest* request, const Search* search, bool isDuringSearch) {
++    static constexpr int ownershipMinVisits = 3;
+     json ret;
+     ret["id"] = request->id;
+     ret["turnNumber"] = request->turnNumber;
+@@ -250,7 +249,7 @@ 
+     bool success = search->getAnalysisJson(
+       request->perspective,
+-      request->analysisPVLen, preventEncore, request->includePolicy,
++      request->analysisPVLen, ownershipMinVisits,  request->includePolicy,
+       request->includeOwnership,request->includeOwnershipStdev,
+       request->includeMovesOwnership,request->includeMovesOwnershipStdev,
+       request->includePVVisits,
+@@ -302,11 +301,7 @@             const bool isDuringSearch = true;
+             reportAnalysis(request,search,isDuringSearch);
+           };
+-          bot->genMoveSynchronousAnalyze(
+-            pla, TimeControls(), searchFactor,
+-            request->reportDuringSearchEvery, request->firstReportDuringSearchAfter,
+-            callback, onSearchBegun
+-          );
++          bot->genMoveSynchronousAnalyze(pla, TimeControls(), searchFactor, request->reportDuringSearchEvery, callback, onSearchBegun);
+         }
+         else {
+           bot->genMoveSynchronous(pla, TimeControls(), searchFactor, onSearchBegun);
+@@ -356,7 +351,6 @@   for(int threadIdx = 0; threadIdx<numAnalysisThreads; threadIdx++) {
+     string searchRandSeed = Global::uint64ToHexString(seedRand.nextUInt64()) + Global::uint64ToHexString(seedRand.nextUInt64());
+     AsyncBot* bot = new AsyncBot(defaultParams, nnEval, &logger, searchRandSeed);
+-    bot->setCopyOfExternalPatternBonusTable(patternBonusTable);
+     threads.push_back(std::thread(analysisLoopProtected,bot,threadIdx));
+     bots.push_back(bot);
+   }
+@@ -491,8 +485,7 @@       rbase.includePolicy = false;
+       rbase.includePVVisits = false;
+       rbase.reportDuringSearch = false;
+-      rbase.reportDuringSearchEvery = 1e30;
+-      rbase.firstReportDuringSearchAfter = 1e30;
++      rbase.reportDuringSearchEvery = 1.0;
+       rbase.priority = 0;
+       rbase.avoidMoveUntilByLocBlack.clear();
+       rbase.avoidMoveUntilByLocWhite.clear();
+@@ -789,22 +782,6 @@         rules.komi = (float)komi;
+         if(!Rules::komiIsIntOrHalfInt(rules.komi)) {
+           reportErrorForId(rbase.id, "rules", msg);
+-          continue;
+-        }
+-      }
+-
+-      if(input.find("whiteHandicapBonus") != input.end()) {
+-        if(!input["whiteHandicapBonus"].is_string()) {
+-          reportErrorForId(rbase.id, "whiteHandicapBonus", "Must be a string");
+-          continue;
+-        }
+-        string s = input["whiteHandicapBonus"].get<string>();
+-        try {
+-          int whiteHandicapBonusRule = Rules::parseWhiteHandicapBonusRule(s);
+-          rules.whiteHandicapBonusRule = whiteHandicapBonusRule;
+-        }
+-        catch(const StringError& err) {
+-          reportErrorForId(rbase.id, "whiteHandicapBonus", err.what());
+           continue;
+         }
+       }
+@@ -902,13 +879,6 @@         if(!suc)
+           continue;
+         rbase.reportDuringSearch = true;
+-        rbase.firstReportDuringSearchAfter = rbase.reportDuringSearchEvery;
+-      }
+-      if(input.find("firstReportDuringSearchAfter") != input.end()) {
+-        bool suc = parseDouble(input, "firstReportDuringSearchAfter", rbase.firstReportDuringSearchAfter, 0.001, 1000000.0, "Must be number of seconds from 0.001 to 1000000.0");
+-        if(!suc)
+-          continue;
+-        rbase.reportDuringSearch = true;
+       }
+       if(input.find("priority") != input.end()) {
+         if(input.find("priorities") != input.end()) {
+@@ -990,7 +960,7 @@         if(moveHistory.size() > 0)
+           initialPlayer = moveHistory[0].pla;
+         else
+-          initialPlayer = BoardHistory::numHandicapStonesOnBoard(board) > 0 ? P_WHITE : P_BLACK;
++          initialPlayer = P_BLACK;
+       }
+ 
+       bool rulesWereSupported;
+@@ -1003,8 +973,7 @@       }
+ 
+       Player nextPla = initialPlayer;
+-      BoardHistory hist(board,nextPla,rules,0);
+-      hist.setAssumeMultipleStartingBlackMovesAreHandicap(assumeMultipleStartingBlackMovesAreHandicap);
++      BoardHistory hist(board,nextPla,rules);
+ 
+       //Build and enqueue requests
+       vector<AnalyzeRequest*> newRequests;
+@@ -1036,7 +1005,6 @@           newRequest->includePVVisits = rbase.includePVVisits;
+           newRequest->reportDuringSearch = rbase.reportDuringSearch;
+           newRequest->reportDuringSearchEvery = rbase.reportDuringSearchEvery;
+-          newRequest->firstReportDuringSearchAfter = rbase.firstReportDuringSearchAfter;
+           newRequest->priority = priority;
+           newRequest->avoidMoveUntilByLocBlack = rbase.avoidMoveUntilByLocBlack;
+           newRequest->avoidMoveUntilByLocWhite = rbase.avoidMoveUntilByLocWhite;
+@@ -1049,12 +1017,10 @@         Player movePla = moveHistory[turnNumber].pla;
+         Loc moveLoc = moveHistory[turnNumber].loc;
+         if(movePla != nextPla) {
+-          board.clearSimpleKoLoc();
+-          hist.clear(board,movePla,rules,hist.encorePhase);
+-          hist.setAssumeMultipleStartingBlackMovesAreHandicap(assumeMultipleStartingBlackMovesAreHandicap);
+-        }
+-
+-        bool suc = hist.makeBoardMoveTolerant(board,moveLoc,movePla,preventEncore);
++          hist.clear(board,movePla,rules);
++        }
++
++        bool suc = hist.makeBoardMoveTolerant(board,moveLoc,movePla);
+         if(!suc) {
+           reportErrorForId(rbase.id, "moves", "Illegal move " + Global::intToString(turnNumber) + ": " + Location::toString(moveLoc,board));
+           foundIllegalMove = true;
+@@ -1129,7 +1095,7 @@   logger.write("NN avg batch size: " + Global::doubleToString(nnEval->averageProcessedBatchSize()));
+   delete nnEval;
+   NeuralNet::globalCleanup();
+-  ScoreValue::freeTables();
++   
+   logger.write("All cleaned up, quitting");
+   return 0;
+ }

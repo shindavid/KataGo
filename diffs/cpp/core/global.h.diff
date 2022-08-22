@@ -1,0 +1,44 @@
+--- cpp/core/global.h [lightvector:master]+++ cpp/core/global.h [hzyhhzy:Reversi2022]@@ -82,14 +82,12 @@   int stringToInt(const std::string& str);
+   int64_t stringToInt64(const std::string& str);
+   uint64_t stringToUInt64(const std::string& str);
+-  uint64_t hexStringToUInt64(const std::string& str);
+   float stringToFloat(const std::string& str);
+   double stringToDouble(const std::string& str);
+   bool stringToBool(const std::string& str);
+   bool tryStringToInt(const std::string& str, int& x);
+   bool tryStringToInt64(const std::string& str, int64_t& x);
+   bool tryStringToUInt64(const std::string& str, uint64_t& x);
+-  bool tryHexStringToUInt64(const std::string& str, uint64_t& x);
+   bool tryStringToFloat(const std::string& str, float& x);
+   bool tryStringToDouble(const std::string& str, double& x);
+   bool tryStringToBool(const std::string& str, bool& x);
+@@ -105,7 +103,7 @@   std::string chopSuffix(const std::string& s, const std::string& suffix);
+ 
+   //Trim whitespace off both ends of string
+-  std::string trim(const std::string& s, const char* delims = " \t\r\n\v\f");
++  std::string trim(const std::string& s);
+ 
+   //Join strings with a delimiter between each one, from [start,end)
+   std::string concat(const char* const* strs, size_t len, const char* delim);
+@@ -154,12 +152,6 @@ 
+   //Display a message and ask the user to press a key to continue
+   void pauseForKey();
+-
+-  //Round x to the nearest multiple of 1/inverseScale
+-  double roundStatic(double x, double inverseScale);
+-  //Round x to this many decimal digits of precision
+-  double roundDynamic(double x, int precision);
+-
+ }
+ 
+ struct StringError : public std::exception {
+@@ -176,9 +168,7 @@ };
+ 
+ //Common exception for IO
+-struct IOError : public StringError { IOError(const char* msg):StringError(msg) {}; IOError(const std::string& msg):StringError(msg) {}; };
+-//Exception for config parsing
+-struct ConfigParsingError final : public IOError { ConfigParsingError(const char* msg):IOError(msg) {}; ConfigParsingError(const std::string& msg):IOError(msg) {}; };
++struct IOError final : public StringError { IOError(const char* msg):StringError(msg) {}; IOError(const std::string& msg):StringError(msg) {}; };
+ //Common exception for parameter values
+ struct ValueError final : public StringError { ValueError(const char* msg):StringError(msg) {}; ValueError(const std::string& msg):StringError(msg) {}; };
+ //Common exception for command line argument handling

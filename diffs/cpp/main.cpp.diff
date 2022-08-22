@@ -1,0 +1,89 @@
+--- cpp/main.cpp [lightvector:master]+++ cpp/main.cpp [hzyhhzy:Reversi2022]@@ -57,7 +57,6 @@ runsearchtests : Run a bunch of things using a neural net and dump details to stdout
+ runsearchtestsv3 : Run a bunch more things using a neural net and dump details to stdout
+ runsearchtestsv8 : Run a bunch more things using a neural net and dump details to stdout
+-runsearchtestsv9 : Run a bunch more things using a neural net and dump details to stdout
+ runselfplayinittests : Run some tests involving selfplay training init using a neural net and dump details to stdout
+ runsekitrainwritetests : Run some tests involving seki train output
+ 
+@@ -88,50 +87,10 @@     return MainCmds::matchauto(subArgs);
+   else if(subcommand == "selfplay")
+     return MainCmds::selfplay(subArgs);
+-  else if(subcommand == "runtests")
+-    return MainCmds::runtests(subArgs);
+-  else if(subcommand == "runnnlayertests")
+-    return MainCmds::runnnlayertests(subArgs);
+-  else if(subcommand == "runnnontinyboardtest")
+-    return MainCmds::runnnontinyboardtest(subArgs);
+-  else if(subcommand == "runnnsymmetriestest")
+-    return MainCmds::runnnsymmetriestest(subArgs);
+-  else if(subcommand == "runownershiptests")
+-    return MainCmds::runownershiptests(subArgs);
+-  else if(subcommand == "runoutputtests")
+-    return MainCmds::runoutputtests(subArgs);
+-  else if(subcommand == "runsearchtests")
+-    return MainCmds::runsearchtests(subArgs);
+-  else if(subcommand == "runsearchtestsv3")
+-    return MainCmds::runsearchtestsv3(subArgs);
+-  else if(subcommand == "runsearchtestsv8")
+-    return MainCmds::runsearchtestsv8(subArgs);
+-  else if(subcommand == "runsearchtestsv9")
+-    return MainCmds::runsearchtestsv9(subArgs);
+-  else if(subcommand == "runselfplayinittests")
+-    return MainCmds::runselfplayinittests(subArgs);
+-  else if(subcommand == "runselfplayinitstattests")
+-    return MainCmds::runselfplayinitstattests(subArgs);
+-  else if(subcommand == "runsekitrainwritetests")
+-    return MainCmds::runsekitrainwritetests(subArgs);
+-  else if(subcommand == "runnnonmanyposestest")
+-    return MainCmds::runnnonmanyposestest(subArgs);
+-  else if(subcommand == "runnnbatchingtest")
+-    return MainCmds::runnnbatchingtest(subArgs);
+-  else if(subcommand == "runtinynntests")
+-    return MainCmds::runtinynntests(subArgs);
+-  else if(subcommand == "runnnevalcanarytests")
+-    return MainCmds::runnnevalcanarytests(subArgs);
+-  else if(subcommand == "runconfigtests")
+-    return MainCmds::runconfigtests(subArgs);
+   else if(subcommand == "samplesgfs")
+     return MainCmds::samplesgfs(subArgs);
+   else if(subcommand == "dataminesgfs")
+     return MainCmds::dataminesgfs(subArgs);
+-  else if(subcommand == "genbook")
+-    return MainCmds::genbook(subArgs);
+-  else if(subcommand == "checkbook")
+-    return MainCmds::checkbook(subArgs);
+   else if(subcommand == "trystartposes")
+     return MainCmds::trystartposes(subArgs);
+   else if(subcommand == "viewstartposes")
+@@ -140,12 +99,6 @@     return MainCmds::demoplay(subArgs);
+   else if(subcommand == "sampleinitializations")
+     return MainCmds::sampleinitializations(subArgs);
+-  else if(subcommand == "runbeginsearchspeedtest")
+-    return MainCmds::runbeginsearchspeedtest(subArgs);
+-  else if(subcommand == "runownershipspeedtest")
+-    return MainCmds::runownershipspeedtest(subArgs);
+-  else if(subcommand == "runsleeptest")
+-    return MainCmds::runsleeptest(subArgs);
+   else if(subcommand == "printclockinfo")
+     return MainCmds::printclockinfo(subArgs);
+   else if(subcommand == "sandbox")
+@@ -165,7 +118,6 @@ 
+ int main(int argc, const char* const* argv) {
+   vector<string> args = MainArgs::getCommandLineArgsUTF8(argc,argv);
+-  MainArgs::makeCoutAndCerrAcceptUTF8();
+ 
+   if(args.size() < 2) {
+     printHelp(args);
+@@ -200,11 +152,11 @@ 
+ 
+ string Version::getKataGoVersion() {
+-  return string("1.11.0");
++  return string("1.10.0");
+ }
+ 
+ string Version::getKataGoVersionForHelp() {
+-  return string("KataGo v1.11.0");
++  return string("KataGo v1.10.0");
+ }
+ 
+ string Version::getKataGoVersionFullInfo() {

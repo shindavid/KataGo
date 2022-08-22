@@ -1,0 +1,8 @@
+--- cpp/core/mainargs.h [lightvector:master]+++ cpp/core/mainargs.h [hzyhhzy:Reversi2022]@@ -5,8 +5,6 @@ 
+ namespace MainArgs {
+   std::vector<std::string> getCommandLineArgsUTF8(int argc, const char* const* argv);
+-
+-  void makeCoutAndCerrAcceptUTF8();
+ }
+ 
+ #endif

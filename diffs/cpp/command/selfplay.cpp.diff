@@ -1,0 +1,60 @@
+--- cpp/command/selfplay.cpp [lightvector:master]+++ cpp/command/selfplay.cpp [hzyhhzy:Reversi2022]@@ -34,7 +34,7 @@ 
+ int MainCmds::selfplay(const vector<string>& args) {
+   Board::initHash();
+-  ScoreValue::initTables();
++   
+   Rand seedRand;
+ 
+   ConfigParser cfg;
+@@ -79,9 +79,11 @@   MakeDir::make(outputDir);
+   MakeDir::make(modelsDir);
+ 
+-  Logger logger(&cfg);
++  Logger logger;
+   //Log to random file name to better support starting/stopping as well as multiple parallel runs
+   logger.addFile(outputDir + "/log" + DateTime::getCompactDateTimeString() + "-" + Global::uint64ToHexString(seedRand.nextUInt64()) + ".log");
++  bool logToStdout = cfg.getBool("logToStdout");
++  logger.setLogToStdout(logToStdout);
+ 
+   logger.write("Self Play Engine starting...");
+   logger.write(string("Git revision: ") + Version::getGitRevision());
+@@ -124,7 +126,7 @@   //Done loading!
+   //------------------------------------------------------------------------------------
+   logger.write("Loaded all config stuff, starting self play");
+-  if(!logger.isLoggingToStdout())
++  if(!logToStdout)
+     cout << "Loaded all config stuff, starting self play" << endl;
+ 
+   if(!std::atomic_is_lock_free(&shouldStop))
+@@ -148,10 +150,6 @@     //No new neural nets yet
+     if(!foundModel || (lastNetName != NULL && *lastNetName == modelName))
+       return false;
+-    if(modelName == "random" && lastNetName != NULL && *lastNetName != "random") {
+-      logger.write("WARNING: " + *lastNetName + " was the previous model, but now no model was found. Continuing with prev model instead of using random");
+-      return false;
+-    }
+ 
+     logger.write("Found new neural net " + modelName);
+ 
+@@ -257,7 +255,6 @@     auto shouldStopFunc = []() {
+       return shouldStop.load();
+     };
+-    WaitableFlag* shouldPause = nullptr;
+ 
+     string prevModelName;
+     Rand thisLoopSeedRand;
+@@ -304,7 +301,6 @@         gameData = gameRunner->runGame(
+           seed, botSpecB, botSpecW, forkData, NULL, logger,
+           shouldStopFunc,
+-          shouldPause,
+           (switchNetsMidGame ? checkForNewNNEval : nullptr),
+           nullptr,
+           nullptr
+@@ -387,7 +383,7 @@   NeuralNet::globalCleanup();
+   delete forkData;
+   delete gameRunner;
+-  ScoreValue::freeTables();
++   
+ 
+   if(sigReceived.load())
+     logger.write("Exited cleanly after signal");

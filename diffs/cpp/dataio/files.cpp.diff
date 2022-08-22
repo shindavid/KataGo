@@ -1,0 +1,32 @@
+--- cpp/dataio/files.cpp [lightvector:master]+++ cpp/dataio/files.cpp [hzyhhzy:Reversi2022]@@ -19,7 +19,7 @@ 
+ void FileHelpers::collectSgfsFromDirOrFile(const std::string& dirOrFile, std::vector<std::string>& collected) {
+   try {
+-    if(FileUtils::exists(dirOrFile) && !FileUtils::isDirectory(dirOrFile)) {
++    if(gfs::exists(dirOrFile) && !gfs::is_directory(dirOrFile)) {
+       if(sgfFilter(dirOrFile))
+         collected.push_back(dirOrFile);
+       else {
+@@ -41,7 +41,7 @@     string trimmed = Global::trim(dirs[i]);
+     if(trimmed.size() <= 0)
+       continue;
+-    if(FileUtils::exists(dirs[i]))
++    if(gfs::exists(dirs[i]))
+       collectSgfsFromDir(dirs[i], collected);
+     else
+       collectSgfsFromDir(trimmed, collected);
+@@ -53,7 +53,7 @@     string trimmed = Global::trim(dirsOrFiles[i]);
+     if(trimmed.size() <= 0)
+       continue;
+-    if(FileUtils::exists(dirsOrFiles[i]))
++    if(gfs::exists(dirsOrFiles[i]))
+       collectSgfsFromDirOrFile(dirsOrFiles[i], collected);
+     else
+       collectSgfsFromDirOrFile(trimmed, collected);
+@@ -63,7 +63,7 @@ void FileHelpers::sortNewestToOldest(std::vector<std::string>& files) {
+   vector<std::pair<string, gfs::file_time_type>> filesWithTime;
+   for(size_t i = 0; i<files.size(); i++)
+-    filesWithTime.push_back(std::make_pair(files[i], gfs::last_write_time(gfs::u8path(files[i]))));
++    filesWithTime.push_back(std::make_pair(files[i], gfs::last_write_time(files[i])));
+ 
+   std::sort(
+     filesWithTime.begin(),

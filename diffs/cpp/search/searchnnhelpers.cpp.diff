@@ -1,0 +1,35 @@
+--- cpp/search/searchnnhelpers.cpp [lightvector:master]+++ cpp/search/searchnnhelpers.cpp [hzyhhzy:Reversi2022]@@ -14,9 +14,7 @@   // bool isRoot = true;
+   MiscNNInputParams nnInputParams;
+   nnInputParams.drawEquivalentWinsForWhite = searchParams.drawEquivalentWinsForWhite;
+-  nnInputParams.conservativePass = searchParams.conservativePass;
+   nnInputParams.nnPolicyTemperature = searchParams.nnPolicyTemperature;
+-  nnInputParams.avoidMYTDaggerHack = searchParams.avoidMYTDaggerHackPla == pla;
+   if(searchParams.playoutDoublingAdvantage != 0) {
+     Player playoutDoublingAdvantagePla = getPlayoutDoublingAdvantagePla();
+     nnInputParams.playoutDoublingAdvantage = (
+@@ -49,9 +47,7 @@   }
+   MiscNNInputParams nnInputParams;
+   nnInputParams.drawEquivalentWinsForWhite = searchParams.drawEquivalentWinsForWhite;
+-  nnInputParams.conservativePass = searchParams.conservativePass;
+   nnInputParams.nnPolicyTemperature = searchParams.nnPolicyTemperature;
+-  nnInputParams.avoidMYTDaggerHack = searchParams.avoidMYTDaggerHackPla == thread.pla;
+   if(searchParams.playoutDoublingAdvantage != 0) {
+     Player playoutDoublingAdvantagePla = getPlayoutDoublingAdvantagePla();
+     nnInputParams.playoutDoublingAdvantage = (
+@@ -136,7 +132,7 @@     //We accept this and tolerate that for a few iterations potentially we will be using the OLD policy - without noise,
+     //or without root temperature, etc.
+     //Or if we have none of those things, then we'll not end up updating anything except the age, which is okay too.
+-    uint32_t oldAge = node.nodeAge.exchange(searchNodeAge,std::memory_order_acq_rel);
++    int oldAge = node.nodeAge.exchange(searchNodeAge,std::memory_order_acq_rel);
+     if(oldAge < searchNodeAge) {
+       NNOutput* nnOutput = node.getNNOutput();
+       assert(nnOutput != NULL);
+@@ -144,8 +140,7 @@       //Recompute if we have no ownership map, since we need it for getEndingWhiteScoreBonus
+       //If conservative passing, then we may also need to recompute the root policy ignoring the history if a pass ends the game
+       //If averaging a bunch of symmetries, then we need to recompute it too
+-      if(nnOutput->whiteOwnerMap == NULL ||
+-         (searchParams.conservativePass && thread.history.passWouldEndGame(thread.board,thread.pla)) ||
++      if(nnOutput->whiteOwnerMap == NULL||
+          searchParams.rootNumSymmetriesToSample > 1
+       ) {
+         initNodeNNOutput(thread,node,isRoot,false,true);

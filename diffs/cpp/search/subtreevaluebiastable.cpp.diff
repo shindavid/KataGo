@@ -1,0 +1,12 @@
+--- cpp/search/subtreevaluebiastable.cpp [lightvector:master]+++ cpp/search/subtreevaluebiastable.cpp [hzyhhzy:Reversi2022]@@ -63,11 +63,8 @@   Hash128 hash = ZOBRIST_MOVE_LOCS[parentPrevMoveLoc][0] ^ ZOBRIST_MOVE_LOCS[prevMoveLoc][1];
+ 
+   hash ^= patternHasher.getHash(prevBoard,prevMoveLoc,pla);
+-  if(prevBoard.ko_loc != Board::NULL_LOC) {
+-    hash ^= ZOBRIST_KO_BAN[prevBoard.ko_loc];
+-  }
+ 
+-  uint32_t subMapIdx = (uint32_t)(hash.hash0 % entries.size());
++  auto subMapIdx = hash.hash0 % entries.size();
+ 
+   std::mutex& mutex = mutexPool->getMutex(subMapIdx);
+   std::lock_guard<std::mutex> lock(mutex);

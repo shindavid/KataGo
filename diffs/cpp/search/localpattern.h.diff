@@ -1,0 +1,7 @@
+--- cpp/search/localpattern.h [lightvector:master]+++ cpp/search/localpattern.h [hzyhhzy:Reversi2022]@@ -11,7 +11,6 @@   int ySize;
+   std::vector<Hash128> zobristLocalPattern;
+   std::vector<Hash128> zobristPla;
+-  std::vector<Hash128> zobristAtari;
+ 
+   LocalPatternHasher();
+   ~LocalPatternHasher();

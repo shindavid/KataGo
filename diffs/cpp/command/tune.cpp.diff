@@ -1,0 +1,10 @@
+--- cpp/command/tune.cpp [lightvector:master]+++ cpp/command/tune.cpp [hzyhhzy:Reversi2022]@@ -138,8 +138,8 @@ 
+   string homeDataDirOverride = Setup::loadHomeDataDirOverride(cfg);
+ 
+-  const bool logToStdoutDefault = true;
+-  Logger logger(&cfg, logToStdoutDefault);
++  Logger logger;
++  logger.setLogToStdout(true);
+ 
+   logger.write("Loading model...");
+   ModelDesc modelDesc;

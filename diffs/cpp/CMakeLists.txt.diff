@@ -1,0 +1,81 @@
+--- cpp/CMakeLists.txt [lightvector:master]+++ cpp/CMakeLists.txt [hzyhhzy:Reversi2022]@@ -144,7 +144,6 @@   core/global.cpp
+   core/base64.cpp
+   core/bsearch.cpp
+-  core/commandloop.cpp
+   core/config_parser.cpp
+   core/datetime.cpp
+   core/elo.cpp
+@@ -162,7 +161,6 @@   core/test.cpp
+   core/threadsafecounter.cpp
+   core/threadsafequeue.cpp
+-  core/threadtest.cpp
+   core/timer.cpp
+   game/board.cpp
+   game/rules.cpp
+@@ -179,8 +177,6 @@   neuralnet/nneval.cpp
+   neuralnet/desc.cpp
+   ${NEURALNET_BACKEND_SOURCES}
+-  book/book.cpp
+-  book/bookcssjs.cpp
+   search/timecontrols.cpp
+   search/searchparams.cpp
+   search/mutexpool.cpp
+@@ -199,7 +195,6 @@   search/localpattern.cpp
+   search/searchnodetable.cpp
+   search/subtreevaluebiastable.cpp
+-  search/patternbonustable.cpp
+   search/analysisdata.cpp
+   search/reportedsearchvalues.cpp
+   program/gtpconfig.cpp
+@@ -209,30 +204,7 @@   program/play.cpp
+   program/selfplaymanager.cpp
+   ${GIT_HEADER_FILE_ALWAYS_UPDATED}
+-  tests/testboardarea.cpp
+-  tests/testboardbasic.cpp
+   tests/testcommon.cpp
+-  tests/testconfig.cpp
+-  tests/testmisc.cpp
+-  tests/testnnevalcanary.cpp
+-  tests/testrules.cpp
+-  tests/testscore.cpp
+-  tests/testsgf.cpp
+-  tests/testsymmetries.cpp
+-  tests/testnninputs.cpp
+-  tests/testownership.cpp
+-  tests/testsearchcommon.cpp
+-  tests/testsearchnonn.cpp
+-  tests/testsearch.cpp
+-  tests/testsearchv3.cpp
+-  tests/testsearchv8.cpp
+-  tests/testsearchv9.cpp
+-  tests/testsearchmisc.cpp
+-  tests/testtime.cpp
+-  tests/testtrainingwrite.cpp
+-  tests/testnn.cpp
+-  tests/tinymodel.cpp
+-  tests/tinymodeldata.cpp
+   distributed/client.cpp
+   command/commandline.cpp
+   command/analysis.cpp
+@@ -240,12 +212,10 @@   command/contribute.cpp
+   command/evalsgf.cpp
+   command/gatekeeper.cpp
+-  command/genbook.cpp
+   command/gtp.cpp
+   command/match.cpp
+   command/matchauto.cpp
+   command/misc.cpp
+-  command/runtests.cpp
+   command/sandbox.cpp
+   command/selfplay.cpp
+   command/tune.cpp
+@@ -381,10 +351,6 @@   # core/rand.cpp uses winsock for a gethostname
+   target_link_libraries(katago ws2_32)
+ 
+-  # Go ahead and suppress some MSVC warnings about sprintf and similar
+-  # things. They might be useful in some cases, but also are noisy.
+-  target_compile_definitions(katago PRIVATE _CRT_SECURE_NO_WARNINGS)
+-
+   if(USE_AVX2)
+     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /arch:AVX2 -D__FMA__")
+     target_compile_definitions(katago PRIVATE USE_AVX2)

@@ -1,0 +1,56 @@
+--- cpp/search/searchexplorehelpers.cpp [lightvector:master]+++ cpp/search/searchexplorehelpers.cpp [hzyhhzy:Reversi2022]@@ -95,8 +95,8 @@   int32_t childVirtualLosses = child->virtualLosses.load(std::memory_order_acquire);
+   int64_t childVisits = child->stats.visits.load(std::memory_order_acquire);
+   double utilityAvg = child->stats.utilityAvg.load(std::memory_order_acquire);
+-  double scoreMeanAvg = child->stats.scoreMeanAvg.load(std::memory_order_acquire);
+-  double scoreMeanSqAvg = child->stats.scoreMeanSqAvg.load(std::memory_order_acquire);
++  //double scoreMeanAvg = child->stats.scoreMeanAvg.load(std::memory_order_acquire);
++  //double scoreMeanSqAvg = child->stats.scoreMeanSqAvg.load(std::memory_order_acquire);
+   double childWeight = child->stats.getChildWeight(childEdgeVisits,childVisits);
+ 
+   //It's possible that childVisits is actually 0 here with multithreading because we're visiting this node while a child has
+@@ -109,10 +109,6 @@   else {
+     childUtility = utilityAvg;
+ 
+-    //Tiny adjustment for passing
+-    double endingScoreBonus = getEndingWhiteScoreBonus(parent,moveLoc);
+-    if(endingScoreBonus != 0)
+-      childUtility += getScoreUtilityDiff(scoreMeanAvg, scoreMeanSqAvg, endingScoreBonus);
+   }
+ 
+   //When multithreading, totalChildWeight could be out of sync with childWeight, so if they provably are, then fix that up
+@@ -212,8 +208,8 @@   float nnPolicyProb = parentPolicyProbs[movePos];
+ 
+   int64_t childVisits = child->stats.visits.load(std::memory_order_acquire);
+-  double scoreMeanAvg = child->stats.scoreMeanAvg.load(std::memory_order_acquire);
+-  double scoreMeanSqAvg = child->stats.scoreMeanSqAvg.load(std::memory_order_acquire);
++  //double scoreMeanAvg = child->stats.scoreMeanAvg.load(std::memory_order_acquire);
++  //double scoreMeanSqAvg = child->stats.scoreMeanSqAvg.load(std::memory_order_acquire);
+   double utilityAvg = child->stats.utilityAvg.load(std::memory_order_acquire);
+   double childWeight = child->stats.getChildWeight(childEdgeVisits,childVisits);
+ 
+@@ -222,11 +218,7 @@   if(childVisits <= 0 || childWeight <= 0.0)
+     return 0;
+ 
+-  //Tiny adjustment for passing
+-  double endingScoreBonus = getEndingWhiteScoreBonus(parent,moveLoc);
+   double childUtility = utilityAvg;
+-  if(endingScoreBonus != 0)
+-    childUtility += getScoreUtilityDiff(scoreMeanAvg, scoreMeanSqAvg, endingScoreBonus);
+ 
+   double childWeightWeRetrospectivelyWanted = getExploreSelectionValueInverse(
+     bestChildExploreSelectionValue, nnPolicyProb, totalChildWeight, childUtility, parentUtilityStdevFactor, parent.nextPla
+@@ -400,8 +392,6 @@     if(isRoot) {
+       assert(thread.board.pos_hash == rootBoard.pos_hash);
+       assert(thread.pla == rootPla);
+-      if(!isAllowedRootMove(moveLoc))
+-        continue;
+     }
+     if(avoidMoveUntilByLoc.size() > 0) {
+       assert(avoidMoveUntilByLoc.size() >= Board::MAX_ARR_SIZE);
+@@ -421,6 +411,7 @@     }
+   }
+   if(bestNewMoveLoc != Board::NULL_LOC) {
++    if (!thread.board.isLegal(bestNewMoveLoc, node.nextPla, false))std::cout << "illegal select move";
+     double selectionValue = getNewExploreSelectionValue(
+       node,bestNewNNPolicyProb,totalChildWeight,fpuValue,
+       parentWeightPerVisit,parentUtilityStdevFactor,
