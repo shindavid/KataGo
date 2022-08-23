@@ -37,6 +37,7 @@ def main():
     batch_size = 256
     use_gating = 1
 
+    os.makedirs(base_dir, exist_ok=True)
     rejected_models_dir = os.path.join(base_dir, 'rejectedmodels')
     sgf_dir = os.path.join(base_dir, 'gatekeepersgf')
     test_models_dir = os.path.join(base_dir, 'modelstobetested')
@@ -106,23 +107,40 @@ def main():
     procs.append(make_proc(train_cmd))
     procs.append(make_proc(gatekeeper_cmd))
 
-    def signal_handler(sig, frame):
-        print('Caught kill signal! Killing katago processes.')
+    def kill_all_and_exit():
         pid_str = ' '.join(map(str, [p.pid for p in procs]))
         kill_cmd = f'kill {pid_str}'
         print(kill_cmd)
         os.system(kill_cmd)
         os._exit(0)
 
+    def signal_handler(sig, frame):
+        print('Caught kill signal! Killing katago processes.')
+        kill_all_and_exit()
+
     signal.signal(signal.SIGINT, signal_handler)
     while True:
-        time.sleep(10)
+        exited = False
+        for p in procs:
+            rc = p.poll()
+            if rc is not None:
+                print(f'Unexpected! Process exited with return code {rc}: {p.cmd}')
+                print('stderr:')
+                for line in p.stderr:
+                    print(line)
+                exited = True
+        if exited:
+            kill_all_and_exit()
+
+        time.sleep(1)
 
 
 def make_proc(tokens):
     cmd = ' '.join(map(str, tokens))
     print(f'Launching: {cmd}')
-    return subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p.cmd = cmd
+    return p
 
 
 if __name__ == '__main__':
