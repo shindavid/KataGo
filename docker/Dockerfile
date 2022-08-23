@@ -8,6 +8,7 @@ RUN rm /etc/apt/sources.list.d/nvidia-ml.list
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
 
 RUN apt-get update && apt-get install -y \
+    cmake \
     zlib1g-dev \
     libzip-dev \
     nvidia-opencl-dev \
